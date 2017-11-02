@@ -24,32 +24,42 @@ use rayon::prelude::*;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
-pub struct Cats {
-    decode: Option<(OrdParQueue<DecodedImage>, OrdParQueueIter<DecodedImage>)>,
+pub struct Collector {
+    queue: OrdParQueue<DecodedImage>,
+}
+
+pub struct Writer {
+    queue_iter: OrdParQueueIter<DecodedImage>,
 }
 
 /// Encoder is initialized after first frame is decoded,
 /// and this explains to Rust that writer `W` is used once for this.
-enum Writer<W: Write> {
+enum WriteInitState<W: Write> {
     Uninit(W),
     Init(Encoder<W>)
 }
 
-impl Cats {
-    pub fn new() -> CatResult<Self> {
-        Ok(Cats {
-            decode: Some(ordparqueue::new(8)),
-        })
-    }
+pub fn new() -> CatResult<(Collector, Writer)> {
+    let (queue, queue_iter) = ordparqueue::new(8);
+
+    Ok((Collector {queue}, Writer {queue_iter}))
+}
+
+/// Collect frames that will be encoded
+impl Collector {
 
     pub fn add_frame_png_file(&mut self, path: PathBuf, delay: u16) {
         // Frames are decoded async in a queue
-        self.decode.as_mut().unwrap().0.push(move || {
+        self.queue.push(move || {
             let image = lodepng::decode32_file(&path)
                 .chain_err(|| format!("Can't load {}", path.display()))?;
             Ok((ImgVec::new(image.buffer, image.width, image.height), delay))
         });
     }
+}
+
+/// Encode collected frames
+impl Writer {
 
     /// `importance_map` is computed from previous and next frame.
     /// Improves quality of pixels visible for longer.
@@ -95,10 +105,8 @@ impl Cats {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(&mut self, outfile: W) -> CatResult<()> {
-        let (decode_q, decode_iter) = self.decode.take().ok_or("already written")?;
-        drop(decode_q);
-        let mut decode_iter = decode_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
+    pub fn write<W: Write + Send>(self, outfile: W) -> CatResult<()> {
+        let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
         let mut curr_frame = if let Some(a) = decode_iter.next() {
@@ -112,7 +120,7 @@ impl Cats {
             None
         };
 
-        let mut enc = Writer::Uninit(outfile);
+        let mut enc = WriteInitState::Uninit(outfile);
         while let Some((i, image, delay)) = curr_frame.take() {
             println!("frame {}", i);
             curr_frame = next_frame.take();
@@ -167,11 +175,11 @@ impl Cats {
             };
 
             enc = match enc {
-                Writer::Uninit(w) => Writer::Init(Encoder::new(w, image8.width as u16, image8.height as u16, &[])?),
+                WriteInitState::Uninit(w) => WriteInitState::Init(Encoder::new(w, image8.width as u16, image8.height as u16, &[])?),
                 x => x,
             };
             let enc = match enc {
-                Writer::Init(ref mut r) => r,
+                WriteInitState::Init(ref mut r) => r,
                 _ => unreachable!(),
             };
 

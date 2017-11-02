@@ -7,7 +7,6 @@ use error::*;
 use error::ResultExt;
 
 use clap::*;
-use gifski::*;
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
@@ -46,14 +45,15 @@ fn bin_main() -> BinResult<()> {
     let frames = matches.values_of_os("FRAMES").ok_or("Missing files")?;
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
-    let mut cats = Cats::new()?;
+    let (mut collector, writer) = gifski::new()?;
 
     for (i, frame) in frames.enumerate() {
         let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
-        cats.add_frame_png_file(PathBuf::from(frame), delay as u16);
+        collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
     }
+    drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    cats.write(File::create(output_path)?)?;
+    writer.write(File::create(output_path)?)?;
     println!("Created {}", output_path.display());
     Ok(())
 }
