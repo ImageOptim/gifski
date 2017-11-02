@@ -12,6 +12,10 @@ readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
 version = "0.1.0"
 
+[[bin]]
+name = "gifski"
+doctest = false
+
 [dependencies]
 clap = "2.26.2"
 error-chain = "0.11.0"

@@ -2,15 +2,19 @@ extern crate gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
 
+mod error;
+use error::*;
+use error::ResultExt;
+
 use clap::*;
 use gifski::*;
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
 
-quick_main!(cat_main);
+quick_main!(bin_main);
 
-fn cat_main() -> CatResult<()> {
+fn bin_main() -> BinResult<()> {
      let matches = App::new(crate_name!())
                         .version(crate_version!())
                         .about("https://gif.ski")
