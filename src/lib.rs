@@ -24,6 +24,7 @@ extern crate imagequant;
 extern crate lodepng;
 extern crate gif_dispose;
 extern crate rayon;
+extern crate pbr;
 
 #[macro_use] extern crate error_chain;
 use gif::*;

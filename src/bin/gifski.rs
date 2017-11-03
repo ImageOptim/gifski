@@ -1,9 +1,9 @@
 extern crate gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
-extern crate pbr;
 
-use gifski::progress::{BasicProgress, ProgressReporter};
+
+use gifski::progress::{NoProgress, ProgressReporter, ProgressBar};
 
 mod error;
 use error::*;
@@ -13,8 +13,6 @@ use clap::*;
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
-
-use pbr::ProgressBar;
 
 quick_main!(bin_main);
 
@@ -41,9 +39,9 @@ fn bin_main() -> BinResult<()> {
                             .takes_value(true)
                             .value_name("a.gif")
                             .required(true))
-                        .arg(Arg::with_name("no-bar")
-                            .long("no-bar")
-                            .help("Don not show a progress bar, show text updates instead"))
+                        .arg(Arg::with_name("quiet")
+                            .long("quiet")
+                            .help("Don not show a progress bar"))
                         .arg(Arg::with_name("FRAMES")
                             .help("PNG files for animation frames")
                             .min_values(1)
@@ -56,6 +54,7 @@ fn bin_main() -> BinResult<()> {
     let frames = matches.values_of_os("FRAMES").ok_or("Missing files")?;
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let once = matches.is_present("once");
+    let quiet = matches.is_present("quiet");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
 
@@ -67,11 +66,11 @@ fn bin_main() -> BinResult<()> {
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    let mut progress: Box<ProgressReporter> = if matches.is_present("no-bar") {
-        Box::new(BasicProgress::new(frame_count))
+    let mut progress: Box<ProgressReporter> = if quiet {
+        Box::new(NoProgress {})
     } else {
         let mut pb = ProgressBar::new(frame_count);
-        pb.format("[=>-]");
+        pb.format("[#_.]");
         pb.message("Frame ");
         Box::new(pb)
     };
@@ -79,6 +78,8 @@ fn bin_main() -> BinResult<()> {
     writer.write(File::create(output_path)?, once, &mut progress)?;
     progress.done();
 
-    println!("Created {}", output_path.display());
+    if !quiet {
+        println!("Created {}", output_path.display());
+    }
     Ok(())
 }
