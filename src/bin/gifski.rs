@@ -2,6 +2,8 @@ extern crate gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
 
+use gifski::progress::BasicProgress;
+
 mod error;
 use error::*;
 use error::ResultExt;
@@ -51,13 +53,17 @@ fn bin_main() -> BinResult<()> {
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
 
+    let mut frame_count: usize = 0;
     for (i, frame) in frames.enumerate() {
         let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
         collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
+        frame_count += 1;
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?, once)?;
+    let mut progress = BasicProgress::new(frame_count);
+    writer.write(File::create(output_path)?, once, &mut progress)?;
+
     println!("Created {}", output_path.display());
     Ok(())
 }
