@@ -105,7 +105,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, once: bool) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
@@ -175,7 +175,13 @@ impl Writer {
             };
 
             enc = match enc {
-                WriteInitState::Uninit(w) => WriteInitState::Init(Encoder::new(w, image8.width as u16, image8.height as u16, &[])?),
+                WriteInitState::Uninit(w) => {
+                    let mut enc = Encoder::new(w, image8.width as u16, image8.height as u16, &[])?;
+                    if !once {
+                        enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
+                    }
+                    WriteInitState::Init(enc)
+                },
                 x => x,
             };
             let enc = match enc {

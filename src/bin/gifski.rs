@@ -25,6 +25,9 @@ fn bin_main() -> BinResult<()> {
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
+                        .arg(Arg::with_name("once")
+                            .long("once")
+                            .help("Do not loop the GIF"))
                         .arg(Arg::with_name("output")
                             .long("output")
                             .short("o")
@@ -44,6 +47,7 @@ fn bin_main() -> BinResult<()> {
 
     let frames = matches.values_of_os("FRAMES").ok_or("Missing files")?;
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
+    let once = matches.is_present("once");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
 
@@ -53,7 +57,7 @@ fn bin_main() -> BinResult<()> {
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?)?;
+    writer.write(File::create(output_path)?, once)?;
     println!("Created {}", output_path.display());
     Ok(())
 }
