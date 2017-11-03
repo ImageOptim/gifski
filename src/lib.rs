@@ -87,8 +87,11 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgRef<RGBA8>, importance_map: &[u8], background: Option<ImgRef<RGBA8>>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn quantize(image: ImgRef<RGBA8>, importance_map: &[u8], background: Option<ImgRef<RGBA8>>, fast: bool) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         let mut liq = Attributes::new();
+        if fast {
+            liq.set_speed(10);
+        }
         let mut img = liq.new_image(image.buf, image.width(), image.height(), 0.)?;
         img.set_importance_map(importance_map)?;
         if let Some(bg) = background {
@@ -126,7 +129,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W, once: bool, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, once: bool, fast: bool, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
@@ -198,7 +201,7 @@ impl Writer {
 
             let (image8, image8_pal) = {
                 let bg = if has_prev_frame {Some(screen.pixels.as_ref())} else {None};
-                Self::quantize(image.as_ref(), &importance_map, bg)?
+                Self::quantize(image.as_ref(), &importance_map, bg, fast)?
             };
 
             enc = match enc {

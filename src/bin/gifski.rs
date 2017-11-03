@@ -43,18 +43,21 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::with_name("quiet")
                             .long("quiet")
                             .help("Don not show a progress bar"))
+                        .arg(Arg::with_name("fast")
+                            .long("fast")
+                            .help("3 times faster encoding, but 10% lower quality and bigger file"))
                         .arg(Arg::with_name("FRAMES")
                             .help("PNG files for animation frames")
                             .min_values(1)
                             .empty_values(false)
                             .use_delimiter(false)
-                            .required(true)
-                            )
+                            .required(true))
                         .get_matches();
 
     let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let once = matches.is_present("once");
+    let fast = matches.is_present("fast");
     let quiet = matches.is_present("quiet");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
@@ -77,7 +80,7 @@ fn bin_main() -> BinResult<()> {
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?, once, &mut progress)?;
+    writer.write(File::create(output_path)?, once, fast, &mut progress)?;
 
     progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())
