@@ -7,15 +7,14 @@ pub trait ProgressReporter {
     fn increase(&mut self);
 
     /// Mark the progress as done.
-    fn done(&mut self);
+    fn done(&mut self, msg: &str);
 }
 
-pub struct NoProgress {
-}
+pub struct NoProgress {}
 
 impl ProgressReporter for NoProgress {
     fn increase(&mut self) {}
-    fn done(&mut self) {}
+    fn done(&mut self, _msg: &str) {}
 }
 
 /// Implement the progress reporter trait for a progress bar,
@@ -25,8 +24,7 @@ impl ProgressReporter for ProgressBar<Stdout> {
         self.inc();
     }
 
-    fn done(&mut self) {
-        let total = self.total;
-        self.finish_print(format!("Processed {} frames", total).as_str());
+    fn done(&mut self, msg: &str) {
+        self.finish_print(msg);
     }
 }

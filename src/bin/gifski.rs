@@ -3,7 +3,7 @@ extern crate gifski;
 #[macro_use] extern crate error_chain;
 
 
-use gifski::progress::{NoProgress, ProgressReporter, ProgressBar};
+use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
 mod error;
 use error::*;
@@ -11,6 +11,7 @@ use error::ResultExt;
 
 use clap::*;
 
+use std::time::Duration;
 use std::path::{Path, PathBuf};
 use std::fs::File;
 
@@ -51,35 +52,33 @@ fn bin_main() -> BinResult<()> {
                             )
                         .get_matches();
 
-    let frames = matches.values_of_os("FRAMES").ok_or("Missing files")?;
+    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let once = matches.is_present("once");
     let quiet = matches.is_present("quiet");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
 
-    let mut frame_count = 0;
-    for (i, frame) in frames.enumerate() {
-        let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
-        collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
-        frame_count += 1;
-    }
-    drop(collector); // necessary to prevent writer waiting for more frames forever
-
     let mut progress: Box<ProgressReporter> = if quiet {
         Box::new(NoProgress {})
     } else {
-        let mut pb = ProgressBar::new(frame_count);
-        pb.format("[#_.]");
+        let mut pb = ProgressBar::new(frames.len() as u64);
+        pb.show_speed = false;
+        pb.show_percent = false;
+        pb.format(" #_. ");
         pb.message("Frame ");
+        pb.set_max_refresh_rate(Some(Duration::from_millis(250)));
         Box::new(pb)
     };
 
-    writer.write(File::create(output_path)?, once, &mut progress)?;
-    progress.done();
-
-    if !quiet {
-        println!("Created {}", output_path.display());
+    for (i, frame) in frames.into_iter().enumerate() {
+        let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
+        collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
     }
+    drop(collector); // necessary to prevent writer waiting for more frames forever
+
+    writer.write(File::create(output_path)?, once, &mut progress)?;
+
+    progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())
 }
