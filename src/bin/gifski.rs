@@ -20,18 +20,10 @@ quick_main!(bin_main);
 fn bin_main() -> BinResult<()> {
      let matches = App::new(crate_name!())
                         .version(crate_version!())
-                        .about("https://gif.ski")
+                        .about("https://gif.ski by Kornel Lesiński")
+                        .setting(AppSettings::UnifiedHelpMessage)
                         .setting(AppSettings::DeriveDisplayOrder)
-                        .arg(Arg::with_name("fps")
-                            .long("fps")
-                            .help("Animation frames per second")
-                            .required(false)
-                            .empty_values(false)
-                            .value_name("num")
-                            .default_value("20"))
-                        .arg(Arg::with_name("once")
-                            .long("once")
-                            .help("Do not loop the GIF"))
+                        .setting(AppSettings::ArgRequiredElseHelp)
                         .arg(Arg::with_name("output")
                             .long("output")
                             .short("o")
@@ -40,12 +32,34 @@ fn bin_main() -> BinResult<()> {
                             .takes_value(true)
                             .value_name("a.gif")
                             .required(true))
-                        .arg(Arg::with_name("quiet")
-                            .long("quiet")
-                            .help("Don not show a progress bar"))
+                        .arg(Arg::with_name("fps")
+                            .long("fps")
+                            .help("Animation frames per second")
+                            .required(false)
+                            .empty_values(false)
+                            .value_name("num")
+                            .default_value("20"))
                         .arg(Arg::with_name("fast")
                             .long("fast")
                             .help("3 times faster encoding, but 10% lower quality and bigger file"))
+                        .arg(Arg::with_name("width")
+                            .long("width")
+                            .short("W")
+                            .takes_value(true)
+                            .value_name("px")
+                            .help("Maximum width"))
+                        .arg(Arg::with_name("height")
+                            .long("height")
+                            .short("H")
+                            .takes_value(true)
+                            .value_name("px")
+                            .help("Maximum height"))
+                        .arg(Arg::with_name("once")
+                            .long("once")
+                            .help("Do not loop the GIF"))
+                        .arg(Arg::with_name("quiet")
+                            .long("quiet")
+                            .help("Don not show a progress bar"))
                         .arg(Arg::with_name("FRAMES")
                             .help("PNG files for animation frames")
                             .min_values(1)
@@ -57,7 +71,8 @@ fn bin_main() -> BinResult<()> {
     let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
-        width: None, height: None,
+        width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
+        height: parse_opt(matches.value_of("height")).chain_err(|| "Invalid height")?,
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
     };
@@ -83,8 +98,15 @@ fn bin_main() -> BinResult<()> {
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?, &mut progress)?;
+    writer.write(File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?, &mut progress)?;
 
     progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())
+}
+
+fn parse_opt(s: Option<&str>) -> BinResult<Option<u32>> {
+    match s {
+        Some(s) => Ok(Some(s.parse()?)),
+        None => Ok(None),
+    }
 }

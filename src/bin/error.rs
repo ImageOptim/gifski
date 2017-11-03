@@ -1,5 +1,6 @@
 use gifski;
 use std::io;
+use std::num;
 
 error_chain! {
     types {
@@ -8,5 +9,6 @@ error_chain! {
     foreign_links {
         GifSki(gifski::Error);
         Io(io::Error);
+        Num(num::ParseIntError);
     }
 }
