@@ -1,6 +1,9 @@
 extern crate gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
+extern crate pbr;
+
+use gifski::progress::{BasicProgress, ProgressReporter};
 
 mod error;
 use error::*;
@@ -10,6 +13,8 @@ use clap::*;
 
 use std::path::{Path, PathBuf};
 use std::fs::File;
+
+use pbr::ProgressBar;
 
 quick_main!(bin_main);
 
@@ -36,6 +41,9 @@ fn bin_main() -> BinResult<()> {
                             .takes_value(true)
                             .value_name("a.gif")
                             .required(true))
+                        .arg(Arg::with_name("no-bar")
+                            .long("no-bar")
+                            .help("Don not show a progress bar, show text updates instead"))
                         .arg(Arg::with_name("FRAMES")
                             .help("PNG files for animation frames")
                             .min_values(1)
@@ -51,13 +59,26 @@ fn bin_main() -> BinResult<()> {
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
     let (mut collector, writer) = gifski::new()?;
 
+    let mut frame_count = 0;
     for (i, frame) in frames.enumerate() {
         let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
         collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
+        frame_count += 1;
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?, once)?;
+    let mut progress: Box<ProgressReporter> = if matches.is_present("no-bar") {
+        Box::new(BasicProgress::new(frame_count))
+    } else {
+        let mut pb = ProgressBar::new(frame_count);
+        pb.format("[=>-]");
+        pb.message("Frame ");
+        Box::new(pb)
+    };
+
+    writer.write(File::create(output_path)?, once, &mut progress)?;
+    progress.done();
+
     println!("Created {}", output_path.display());
     Ok(())
 }

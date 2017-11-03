@@ -35,6 +35,8 @@ mod error;
 pub use error::*;
 mod ordparqueue;
 use ordparqueue::*;
+pub mod progress;
+use progress::*;
 
 use std::path::PathBuf;
 use std::io::prelude::*;
@@ -123,7 +125,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W, once: bool) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, once: bool, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
@@ -140,7 +142,7 @@ impl Writer {
 
         let mut enc = WriteInitState::Uninit(outfile);
         while let Some((i, image, delay)) = curr_frame.take() {
-            println!("frame {}", i);
+            reporter.increase();
             curr_frame = next_frame.take();
             next_frame = if let Some(a) = decode_iter.next() {
                 Some(a?)
