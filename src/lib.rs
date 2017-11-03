@@ -48,6 +48,7 @@ type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 pub struct Settings {
     pub width: Option<u32>,
     pub height: Option<u32>,
+    pub quality: u8,
     pub once: bool,
     pub fast: bool,
 }
@@ -95,11 +96,17 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgRef<RGBA8>, importance_map: &[u8], background: Option<ImgRef<RGBA8>>, fast: bool) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn quantize(image: ImgRef<RGBA8>, importance_map: &[u8], background: Option<ImgRef<RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         let mut liq = Attributes::new();
-        if fast {
+        if settings.fast {
             liq.set_speed(10);
         }
+        let quality = if background.is_some() { // not first frame
+            settings.quality.into()
+        } else {
+            100 // the first frame is too important to ruin it
+        };
+        liq.set_quality(0, quality);
         let mut img = liq.new_image(image.buf, image.width(), image.height(), 0.)?;
         img.set_importance_map(importance_map)?;
         if let Some(bg) = background {
@@ -188,11 +195,12 @@ impl Writer {
 
             if has_prev_frame {
                 debug_assert_eq!(screen.pixels.stride(), image.stride());
+                let q = 100 - self.settings.quality as u32;
+                let min_diff = 80 + q * q;
                 importance_map.par_iter_mut().zip(screen.pixels.buf.par_iter().cloned().zip(image.buf.par_iter().cloned()))
                 .for_each(|(px, (a,b))| {
                     // TODO: try comparing with max-quality dithered non-transparent frame, but at half res to avoid dithering confusing the results
                     // and pick pixels/areas that are better left transparent?
-                    let min_diff = 16;
 
                     let diff = colordiff(a,b);
                     // if pixels are close or identical, no weight on them
@@ -209,7 +217,7 @@ impl Writer {
 
             let (image8, image8_pal) = {
                 let bg = if has_prev_frame {Some(screen.pixels.as_ref())} else {None};
-                Self::quantize(image.as_ref(), &importance_map, bg, self.settings.fast)?
+                Self::quantize(image.as_ref(), &importance_map, bg, &self.settings)?
             };
 
             enc = match enc {

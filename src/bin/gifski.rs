@@ -35,13 +35,17 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::with_name("fps")
                             .long("fps")
                             .help("Animation frames per second")
-                            .required(false)
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
                         .arg(Arg::with_name("fast")
                             .long("fast")
                             .help("3 times faster encoding, but 10% lower quality and bigger file"))
+                        .arg(Arg::with_name("quality")
+                            .long("quality")
+                            .value_name("0-100")
+                            .takes_value(true)
+                            .help("Lower quality may give smaller file"))
                         .arg(Arg::with_name("width")
                             .long("width")
                             .short("W")
@@ -73,6 +77,7 @@ fn bin_main() -> BinResult<()> {
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
         height: parse_opt(matches.value_of("height")).chain_err(|| "Invalid height")?,
+        quality: parse_opt(matches.value_of("quality")).chain_err(|| "Invalid quality")?.unwrap_or(100).min(100),
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
     };
@@ -104,7 +109,7 @@ fn bin_main() -> BinResult<()> {
     Ok(())
 }
 
-fn parse_opt(s: Option<&str>) -> BinResult<Option<u32>> {
+fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
     match s {
         Some(s) => Ok(Some(s.parse()?)),
         None => Ok(None),
