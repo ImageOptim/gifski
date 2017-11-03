@@ -107,7 +107,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send, R: ProgressReporter>(self, outfile: W, once: bool, reporter: &mut R) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, once: bool, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
