@@ -56,11 +56,14 @@ fn bin_main() -> BinResult<()> {
 
     let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
-    let once = matches.is_present("once");
-    let fast = matches.is_present("fast");
+    let settings = gifski::Settings {
+        width: None, height: None,
+        once: matches.is_present("once"),
+        fast: matches.is_present("fast"),
+    };
     let quiet = matches.is_present("quiet");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
-    let (mut collector, writer) = gifski::new()?;
+    let (mut collector, writer) = gifski::new(settings)?;
 
     let mut progress: Box<ProgressReporter> = if quiet {
         Box::new(NoProgress {})
@@ -80,7 +83,7 @@ fn bin_main() -> BinResult<()> {
     }
     drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path)?, once, fast, &mut progress)?;
+    writer.write(File::create(output_path)?, &mut progress)?;
 
     progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())

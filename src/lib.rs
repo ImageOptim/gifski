@@ -45,12 +45,20 @@ use rayon::prelude::*;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
+pub struct Settings {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub once: bool,
+    pub fast: bool,
+}
+
 pub struct Collector {
     queue: OrdParQueue<DecodedImage>,
 }
 
 pub struct Writer {
     queue_iter: OrdParQueueIter<DecodedImage>,
+    settings: Settings,
 }
 
 /// Encoder is initialized after first frame is decoded,
@@ -60,10 +68,10 @@ enum WriteInitState<W: Write> {
     Init(Encoder<W>)
 }
 
-pub fn new() -> CatResult<(Collector, Writer)> {
+pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     let (queue, queue_iter) = ordparqueue::new(8);
 
-    Ok((Collector {queue}, Writer {queue_iter}))
+    Ok((Collector { queue }, Writer { queue_iter, settings }))
 }
 
 /// Collect frames that will be encoded
@@ -129,7 +137,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W, once: bool, fast: bool, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
@@ -201,13 +209,13 @@ impl Writer {
 
             let (image8, image8_pal) = {
                 let bg = if has_prev_frame {Some(screen.pixels.as_ref())} else {None};
-                Self::quantize(image.as_ref(), &importance_map, bg, fast)?
+                Self::quantize(image.as_ref(), &importance_map, bg, self.settings.fast)?
             };
 
             enc = match enc {
                 WriteInitState::Uninit(w) => {
                     let mut enc = Encoder::new(w, image8.width as u16, image8.height as u16, &[])?;
-                    if !once {
+                    if !self.settings.once {
                         enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
                     }
                     WriteInitState::Init(enc)
