@@ -30,6 +30,15 @@ resize = "0.3.0"
 rgb = "0.8.1"
 threadpool = "1.7.0"
 
+[dependencies.ffmpeg]
+optional = true
+git = "https://github.com/pornel/rust-ffmpeg.git"
+features = ["codec", "format", "filter", "software-resampling", "software-scaling", "resampling" ]
+
+[features]
+default-features = []
+video = ["ffmpeg"]
+
 [lib]
 path = "src/lib.rs"
 

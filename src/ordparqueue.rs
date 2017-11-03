@@ -29,6 +29,11 @@ pub fn new<T>(num_cpus: usize) -> (OrdParQueue<T>, OrdParQueueIter<T>) {
 }
 
 impl<T: Send + 'static> OrdParQueue<T> {
+    pub fn push_sync(&mut self, item: T) {
+        self.sender.send(ReverseTuple(self.current_index, item)).unwrap();
+        self.current_index += 1;
+    }
+
     pub fn push<F>(&mut self, async_callback: F) where F: FnOnce() -> T + Send + 'static {
         let tx = self.sender.clone();
         let i = self.current_index;

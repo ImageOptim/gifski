@@ -2,6 +2,14 @@ extern crate gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
 
+#[cfg(feature = "video")]
+extern crate ffmpeg;
+extern crate imgref;
+extern crate rgb;
+
+#[cfg(feature = "video")]
+mod video;
+
 
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
@@ -14,6 +22,11 @@ use clap::*;
 use std::time::Duration;
 use std::path::{Path, PathBuf};
 use std::fs::File;
+
+#[cfg(feature = "video")]
+const VIDEO_FRAMES_ARG_HELP: &'static str = "one MP4/WebM video, or multiple PNG animation frames";
+#[cfg(not(feature = "video"))]
+const VIDEO_FRAMES_ARG_HELP: &'static str = "PNG animation frames";
 
 quick_main!(bin_main);
 
@@ -34,7 +47,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .arg(Arg::with_name("fps")
                             .long("fps")
-                            .help("Animation frames per second")
+                            .help("Animation frames per second (for PNG frames only)")
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
@@ -65,7 +78,7 @@ fn bin_main() -> BinResult<()> {
                             .long("quiet")
                             .help("Don not show a progress bar"))
                         .arg(Arg::with_name("FRAMES")
-                            .help("PNG files for animation frames")
+                            .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
                             .empty_values(false)
                             .use_delimiter(false)
@@ -97,13 +110,17 @@ fn bin_main() -> BinResult<()> {
         Box::new(pb)
     };
 
-    for (i, frame) in frames.into_iter().enumerate() {
-        let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
-        collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
+    if frames.len() == 1 {
+        decode_video(Path::new(frames[0]), collector)?;
+    } else {
+        for (i, frame) in frames.into_iter().enumerate() {
+            let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
+            collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
+        }
+        drop(collector); // necessary to prevent writer waiting for more frames forever
     }
-    drop(collector); // necessary to prevent writer waiting for more frames forever
 
-    writer.write(File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?, &mut progress)?;
+    writer.write(File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?, &mut *progress)?;
 
     progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())
@@ -114,4 +131,15 @@ fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&s
         Some(s) => Ok(Some(s.parse()?)),
         None => Ok(None),
     }
+}
+
+#[cfg(feature = "video")]
+fn decode_video(path: &Path, collector: gifski::Collector) -> BinResult<()> {
+    let vid = video::Decoder::new()?;
+    vid.collect_frames_async(path, collector)
+}
+
+#[cfg(not(feature = "video"))]
+fn decode_video(_: &Path, _: gifski::Collector) -> BinResult<()> {
+    Err("This executable has been compiled without video support")?
 }

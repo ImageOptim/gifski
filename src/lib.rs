@@ -87,6 +87,13 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
 
 /// Collect frames that will be encoded
 impl Collector {
+    pub fn fail<E: Into<Error>>(mut self, err: E) {
+        self.queue.push_sync(Err(err.into()));
+    }
+
+    pub fn add_frame_rgba_sync(&mut self, image: ImgVec<RGBA8>, delay: u16) {
+        self.queue.push_sync(Ok((Self::resized(image, self.width, self.height), delay)));
+    }
 
     pub fn add_frame_png_file(&mut self, path: PathBuf, delay: u16) {
         // Frames are decoded async in a queue
@@ -171,7 +178,7 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W, reporter: &mut Box<ProgressReporter>) -> CatResult<()> {
+    pub fn write<W: Write + Send>(self, outfile: W, reporter: &mut ProgressReporter) -> CatResult<()> {
         let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;

@@ -16,7 +16,7 @@ If you have Rust, you can also get it with `cargo install gifski`. Run `cargo bu
 
 ## Usage
 
-I haven't finished implementing proper video import yet, so for now you need `ffmpeg` to convert video to PNG frames first:
+You can use `ffmpeg` command to convert any video to PNG frames:
 
 ```sh
 ffmpeg -i video.mp4 frame%04d.png
@@ -28,9 +28,16 @@ and then make the GIF from the frames:
 gifski -o file.gif frame*.png
 ```
 
+You can also resize frames (with `-W <width in pixels>` option). If the input was ever encoded using a lossy video codec it's recommended to at least halve size of the frames to hide compression artefacts and counter chroma subsampling that was done by the video codec.
+
 See `gifski -h` for more options.
 
 ## License
 
 AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license. I can offer alternative licensing options.
 
+## Building with built-in video support
+
+Compile with `cargo build --release --features=video`.
+
+Video support requires ffmpeg library. When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.html) apply. You may need to have a patent license to use H.264/H.265 video (I recommend using VP9/WebM instead).
