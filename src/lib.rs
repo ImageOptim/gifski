@@ -154,6 +154,12 @@ impl Writer {
             let has_prev_frame = i > 0;
 
             let mut importance_map: Vec<u8> = if let Some((_, ref next, _)) = next_frame {
+
+                if next.width() != image.width() || next.height() != image.height() {
+                    Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
+                        next.width(), next.height(), image.width(), image.height()))?;
+                }
+
                 debug_assert_eq!(next.stride(), image.stride());
                 next.buf.par_iter().cloned().zip(image.buf.par_iter().cloned()).map(|(a,b)| {
                     // Even if next frame completely overwrites it, it's still somewhat important to display current one
