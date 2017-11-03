@@ -30,3 +30,7 @@ gifski -o file.gif frame*.png
 
 See `gifski -h` for more options.
 
+## License
+
+AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license. I can offer alternative licensing options.
+
