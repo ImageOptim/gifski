@@ -16,10 +16,10 @@ pub struct OrdParQueueIter<T> {
     receive_buffer: BinaryHeap<ReverseTuple<T>>,
 }
 
-pub fn new<T>(num_cpus: usize) -> (OrdParQueue<T>, OrdParQueueIter<T>) {
+pub fn new<T>(name: String, num_cpus: usize) -> (OrdParQueue<T>, OrdParQueueIter<T>) {
     let (sender, receiver) = mpsc::sync_channel(num_cpus);
     (OrdParQueue {
-        pool: ThreadPool::new(num_cpus),
+        pool: ThreadPool::with_name(name, num_cpus),
         sender,
         current_index: 0,
     }, OrdParQueueIter {
