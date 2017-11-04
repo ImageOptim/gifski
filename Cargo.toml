@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "0.3.0"
+version = "0.4.0"
 
 [[bin]]
 doctest = false
@@ -21,7 +21,7 @@ clap = "2.26.2"
 error-chain = "0.11.0"
 gif = "0.9.2"
 gif-dispose = "2.0.1"
-imagequant = "2.11.4"
+imagequant = "2.11.5"
 imgref = "1.2.2"
 lodepng = "2.0.4"
 pbr = "1.0.0"
@@ -37,6 +37,7 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 
 [features]
 default-features = []
+openmp = ["imagequant/openmp"]
 video = ["ffmpeg"]
 
 [lib]
