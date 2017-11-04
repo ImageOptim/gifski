@@ -21,6 +21,7 @@ extern crate rgb;
 extern crate gif;
 extern crate imgref;
 extern crate imagequant;
+extern crate resize;
 extern crate lodepng;
 extern crate gif_dispose;
 extern crate rayon;
@@ -54,6 +55,8 @@ pub struct Settings {
 }
 
 pub struct Collector {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     queue: OrdParQueue<DecodedImage>,
 }
 
@@ -72,7 +75,14 @@ enum WriteInitState<W: Write> {
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     let (queue, queue_iter) = ordparqueue::new(8);
 
-    Ok((Collector { queue }, Writer { queue_iter, settings }))
+    Ok((Collector {
+        queue,
+        width: settings.width,
+        height: settings.height,
+    }, Writer {
+        queue_iter,
+        settings,
+    }))
 }
 
 /// Collect frames that will be encoded
@@ -80,10 +90,22 @@ impl Collector {
 
     pub fn add_frame_png_file(&mut self, path: PathBuf, delay: u16) {
         // Frames are decoded async in a queue
+        let width = self.width;
+        let height = self.height;
         self.queue.push(move || {
             let image = lodepng::decode32_file(&path)
                 .chain_err(|| format!("Can't load {}", path.display()))?;
-            Ok((ImgVec::new(image.buffer, image.width, image.height), delay))
+
+            if let Some(width) = width {
+                let dst_width = (width as usize).min(image.width);
+                let dst_height = height.map(|h| (h as usize).min(image.height)).unwrap_or(image.height * dst_width / image.width);
+                let mut r = resize::new(image.width, image.height, dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
+                let mut dst = vec![RGBA::new(0,0,0,0); dst_width * dst_height];
+                r.resize(image.buffer.as_bytes(), dst.as_bytes_mut());
+                Ok((ImgVec::new(dst, dst_width, dst_height), delay))
+            } else {
+                Ok((ImgVec::new(image.buffer, image.width, image.height), delay))
+            }
         });
     }
 }
@@ -125,7 +147,7 @@ impl Writer {
     fn write_gif_frame<W: Write>(image: ImgRef<u8>, pal: &[RGBA8], transparent_index: Option<u8>, delay: u16, enc: &mut Encoder<W>) -> CatResult<()> {
         let mut pal_rgb = Vec::with_capacity(3 * pal.len());
         for p in pal {
-            pal_rgb.extend_from_slice(p.rgb().as_bytes());
+            pal_rgb.extend_from_slice([p.rgb()].as_bytes());
         }
 
         enc.write_frame(&Frame {

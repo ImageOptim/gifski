@@ -13,20 +13,21 @@ repository = "https://github.com/ImageOptim/gifski"
 version = "0.3.0"
 
 [[bin]]
-name = "gifski"
 doctest = false
+name = "gifski"
 
 [dependencies]
 clap = "2.26.2"
 error-chain = "0.11.0"
 gif = "0.9.2"
-gif-dispose = "2.0.0"
+gif-dispose = "2.0.1"
 imagequant = "2.11.4"
 imgref = "1.2.2"
-lodepng = "2.0.2"
+lodepng = "2.0.4"
 pbr = "1.0.0"
 rayon = "0.8.2"
-rgb = "0.7.2"
+resize = "0.3.0"
+rgb = "0.8.1"
 threadpool = "1.7.0"
 
 [lib]
