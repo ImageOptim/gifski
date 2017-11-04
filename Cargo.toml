@@ -49,3 +49,7 @@ path = "src/lib.rs"
 
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+panic = "abort"
+lto = true
