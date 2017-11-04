@@ -6,6 +6,9 @@ error_chain! {
     types {
         Error, ErrorKind, ResultExt, CatResult;
     }
+    errors {
+        ThreadSend
+    }
     foreign_links {
         Io(io::Error);
         Quant(imagequant::liq_error);

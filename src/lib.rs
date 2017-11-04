@@ -88,11 +88,12 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
 /// Collect frames that will be encoded
 impl Collector {
     pub fn fail<E: Into<Error>>(mut self, err: E) {
-        self.queue.push_sync(Err(err.into()));
+        self.queue.push_sync(Err(err.into())).expect("Failed so hard it can't even report failure");
     }
 
-    pub fn add_frame_rgba_sync(&mut self, image: ImgVec<RGBA8>, delay: u16) {
-        self.queue.push_sync(Ok((Self::resized(image, self.width, self.height), delay)));
+    pub fn add_frame_rgba_sync(&mut self, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
+        self.queue.push_sync(Ok((Self::resized(image, self.width, self.height), delay)))?;
+        Ok(())
     }
 
     pub fn add_frame_png_file(&mut self, path: PathBuf, delay: u16) {

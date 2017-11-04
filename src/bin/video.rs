@@ -68,7 +68,7 @@ impl Decoder {
 
             prev_pts = pts;
 
-            dest.add_frame_rgba_sync(rgba_frame, delay);
+            dest.add_frame_rgba_sync(rgba_frame, delay)?;
 
             if n > 325 {
                 break;

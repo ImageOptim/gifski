@@ -2,6 +2,7 @@ use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use threadpool::ThreadPool;
 use std::sync::mpsc;
+use error::*;
 
 pub struct OrdParQueue<T> {
     pool: ThreadPool,
@@ -29,9 +30,10 @@ pub fn new<T>(num_cpus: usize) -> (OrdParQueue<T>, OrdParQueueIter<T>) {
 }
 
 impl<T: Send + 'static> OrdParQueue<T> {
-    pub fn push_sync(&mut self, item: T) {
-        self.sender.send(ReverseTuple(self.current_index, item)).unwrap();
+    pub fn push_sync(&mut self, item: T) -> CatResult<()> {
+        self.sender.send(ReverseTuple(self.current_index, item)).map_err(|_| ErrorKind::ThreadSend)?;
         self.current_index += 1;
+        Ok(())
     }
 
     pub fn push<F>(&mut self, async_callback: F) where F: FnOnce() -> T + Send + 'static {
@@ -40,7 +42,7 @@ impl<T: Send + 'static> OrdParQueue<T> {
         self.current_index += 1;
         self.pool.execute(move || {
             let res = async_callback();
-            tx.send(ReverseTuple(i, res)).unwrap();
+            tx.send(ReverseTuple(i, res)).ok(); // ignore error, panic is inappropriate here
         });
     }
 }
