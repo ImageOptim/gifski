@@ -69,7 +69,7 @@ pub struct Writer {
 /// and this explains to Rust that writer `W` is used once for this.
 enum WriteInitState<W: Write> {
     Uninit(W),
-    Init(Encoder<W>)
+    Init(Encoder<W>),
 }
 
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
@@ -96,17 +96,22 @@ impl Collector {
             let image = lodepng::decode32_file(&path)
                 .chain_err(|| format!("Can't load {}", path.display()))?;
 
-            if let Some(width) = width {
-                let dst_width = (width as usize).min(image.width);
-                let dst_height = height.map(|h| (h as usize).min(image.height)).unwrap_or(image.height * dst_width / image.width);
-                let mut r = resize::new(image.width, image.height, dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
-                let mut dst = vec![RGBA::new(0,0,0,0); dst_width * dst_height];
-                r.resize(image.buffer.as_bytes(), dst.as_bytes_mut());
-                Ok((ImgVec::new(dst, dst_width, dst_height), delay))
-            } else {
-                Ok((ImgVec::new(image.buffer, image.width, image.height), delay))
-            }
+            Ok((Self::resized(ImgVec::new(image.buffer, image.width, image.height), width, height), delay))
         });
+    }
+
+    fn resized(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
+        if let Some(width) = width {
+            assert_eq!(image.width(), image.stride());
+            let dst_width = (width as usize).min(image.width());
+            let dst_height = height.map(|h| (h as usize).min(image.height())).unwrap_or(image.height() * dst_width / image.width());
+            let mut r = resize::new(image.width(), image.height(), dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
+            let mut dst = vec![RGBA::new(0,0,0,0); dst_width * dst_height];
+            r.resize(image.buf.as_bytes(), dst.as_bytes_mut());
+            ImgVec::new(dst, dst_width, dst_height)
+        } else {
+            image
+        }
     }
 }
 
@@ -173,7 +178,7 @@ impl Writer {
         let mut curr_frame = if let Some(a) = decode_iter.next() {
             Some(a?)
         } else {
-            Err("no frames")?
+            Err("Found no usable frames to encode")?
         };
         let mut next_frame = if let Some(a) = decode_iter.next() {
             Some(a?)

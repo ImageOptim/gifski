@@ -57,7 +57,7 @@ fn bin_main() -> BinResult<()> {
                             .short("H")
                             .takes_value(true)
                             .value_name("px")
-                            .help("Maximum height"))
+                            .help("Maximum height (if width is also set)"))
                         .arg(Arg::with_name("once")
                             .long("once")
                             .help("Do not loop the GIF"))
