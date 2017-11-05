@@ -178,9 +178,13 @@ fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
 fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {
-        let g = glob::glob(&p.to_string_lossy()).map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())?;
-        out.extend(g);
+        match glob::glob(&p.to_string_lossy()) {
+            Ok(g) => {
+                let g = g.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())?;
+                out.extend(g);
+            },
+            Err(_) => out.push(p),
+        }
     }
     Ok(out)
 }
