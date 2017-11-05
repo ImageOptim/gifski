@@ -5,27 +5,24 @@ use std::path::Path;
 use imgref::*;
 use rgb::*;
 
-pub struct Decoder {}
+pub struct Decoder {
+    input_context: ffmpeg::format::context::Input,
+}
+
 
 impl Decoder {
-    pub fn new() -> BinResult<Self> {
+    pub fn new(path: &Path) -> BinResult<Self> {
         ffmpeg::init().chain_err(|| "Unable to initialize ffmpeg")?;
-        Ok(Self {})
-    }
-
-    pub fn collect_frames_async(self, path: &Path, mut dest: Collector) -> BinResult<()> {
         let input_context = ffmpeg::format::input(&path)
             .chain_err(|| format!("Unable to open video file {}", path.display()))?;
-        if let Err(e) = self.collect_frames(input_context, &mut dest) {
-            dest.fail(e.to_string());
-        }
-        // dest is dropped here, which signals end of input
-        Ok(())
+        Ok(Self {
+            input_context
+        })
     }
 
-    fn collect_frames(self, mut input_context: ffmpeg::format::context::Input, dest: &mut Collector) -> BinResult<()> {
+    pub fn collect_frames(mut self, mut dest: Collector) -> BinResult<()> {
         let (stream_index, mut decoder, mut converter, time_base) = {
-            let stream = input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?;
+            let stream = self.input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?;
 
             let mut decoder = stream.codec().decoder().video().chain_err(|| "Unable to decode the codec used in the video")?;
 
@@ -33,10 +30,10 @@ impl Decoder {
             (stream.index(), decoder, converter, stream.time_base())
         };
 
-        let mut n = 0;
+        let mut i = 0;
         let mut gif_delay_pts = 0;
         let mut prev_pts = 0;
-        for (s, packet) in input_context.packets() {
+        for (s, packet) in self.input_context.packets() {
             if s.index() != stream_index {
                 continue;
             }
@@ -65,12 +62,8 @@ impl Decoder {
 
             prev_pts = pts;
 
-            dest.add_frame_rgba_sync(rgba_frame, delay)?;
-
-            if n > 325 {
-                break;
-            }
-            n += 1;
+            dest.add_frame_rgba(i, rgba_frame, delay)?;
+            i += 1;
         }
         Ok(())
     }

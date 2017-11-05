@@ -154,8 +154,8 @@ fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&s
 
 #[cfg(feature = "video")]
 fn decode_video(path: &Path, collector: gifski::Collector) -> BinResult<()> {
-    let vid = video::Decoder::new()?;
-    vid.collect_frames_async(path, collector)
+    let vid = video::Decoder::new(path)?;
+    vid.collect_frames(collector)
 }
 
 #[cfg(not(feature = "video"))]
