@@ -10,7 +10,9 @@ extern crate rayon;
 
 #[cfg(feature = "video")]
 mod video;
-
+mod png;
+mod source;
+use source::*;
 
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
@@ -86,7 +88,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .get_matches();
 
-    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.collect();
+    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
@@ -108,12 +110,16 @@ fn bin_main() -> BinResult<()> {
         Err("Quality 100 is maximum")?;
     }
 
-    let (mut collector, writer) = gifski::new(settings)?;
+    let mut decoder = if frames.len() == 1 {
+        get_video_decoder(&frames[0])?
+    } else {
+        Box::new(png::Lodecoder::new(frames, fps))
+    };
 
     let mut progress: Box<ProgressReporter> = if quiet {
         Box::new(NoProgress {})
     } else {
-        let mut pb = ProgressBar::new(frames.len() as u64);
+        let mut pb = ProgressBar::new(decoder.total_frames());
         pb.show_speed = false;
         pb.show_percent = false;
         pb.format(" #_. ");
@@ -122,19 +128,10 @@ fn bin_main() -> BinResult<()> {
         Box::new(pb)
     };
 
+    let (collector, writer) = gifski::new(settings)?;
     let file = File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?;
-
     let (decode_res, write_res) = rayon::join(move || -> BinResult<()> {
-        if frames.len() == 1 {
-            decode_video(Path::new(frames[0]), collector)?;
-        } else {
-            for (i, frame) in frames.into_iter().enumerate() {
-                let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
-                collector.add_frame_png_file(i, PathBuf::from(frame), delay as u16)?;
-            }
-            drop(collector); // necessary to prevent writer waiting for more frames forever
-        }
-        Ok(())
+        decoder.collect(collector)
     }, move || -> BinResult<()> {
         writer.write(file, &mut *progress)?;
         progress.done(&format!("gifski created {}", output_path.display()));
@@ -153,12 +150,11 @@ fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&s
 }
 
 #[cfg(feature = "video")]
-fn decode_video(path: &Path, collector: gifski::Collector) -> BinResult<()> {
-    let vid = video::Decoder::new(path)?;
-    vid.collect_frames(collector)
+fn get_video_decoder(path: &Path) -> BinResult<Box<Source + Send>> {
+    Ok(Box::new(video::Decoder::new(path)?))
 }
 
 #[cfg(not(feature = "video"))]
-fn decode_video(_: &Path, _: gifski::Collector) -> BinResult<()> {
+fn get_video_decoder(_: &Path) -> BinResult<Box<Source + Send>> {
     Err("This executable has been compiled without video support")?
 }

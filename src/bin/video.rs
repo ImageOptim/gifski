@@ -4,23 +4,35 @@ use gifski::Collector;
 use std::path::Path;
 use imgref::*;
 use rgb::*;
+use source::*;
 
 pub struct Decoder {
     input_context: ffmpeg::format::context::Input,
+    frames: u64,
 }
 
+impl Source for Decoder {
+    fn total_frames(&self) -> u64 {
+        self.frames
+    }
+    fn collect(&mut self, dest: Collector) -> BinResult<()> {
+        self.collect_frames(dest)
+    }
+}
 
 impl Decoder {
     pub fn new(path: &Path) -> BinResult<Self> {
         ffmpeg::init().chain_err(|| "Unable to initialize ffmpeg")?;
         let input_context = ffmpeg::format::input(&path)
             .chain_err(|| format!("Unable to open video file {}", path.display()))?;
+        let frames = input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?.frames() as u64;
         Ok(Self {
-            input_context
+            input_context,
+            frames
         })
     }
 
-    pub fn collect_frames(mut self, mut dest: Collector) -> BinResult<()> {
+    pub fn collect_frames(&mut self, mut dest: Collector) -> BinResult<()> {
         let (stream_index, mut decoder, mut converter, time_base) = {
             let stream = self.input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?;
 
