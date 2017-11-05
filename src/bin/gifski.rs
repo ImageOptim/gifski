@@ -7,6 +7,8 @@ extern crate ffmpeg;
 extern crate imgref;
 extern crate rgb;
 extern crate rayon;
+#[cfg(windows)]
+extern crate glob;
 
 #[cfg(feature = "video")]
 mod video;
@@ -20,7 +22,7 @@ mod error;
 use error::*;
 use error::ResultExt;
 
-use clap::*;
+use clap::{App, Arg, AppSettings};
 
 use std::time::Duration;
 use std::path::{Path, PathBuf};
@@ -88,7 +90,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .get_matches();
 
-    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect();
+    let frames = emulate_glob(matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect())?;
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
@@ -164,4 +166,21 @@ cargo build --release --features=video
 Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable.
 ")?
+}
+
+
+#[cfg(not(windows))]
+fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
+    Ok(paths)
+}
+
+#[cfg(windows)]
+fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let g = glob::glob(&p.to_string_lossy()).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())?;
+        out.extend(g);
+    }
+    Ok(out)
 }
