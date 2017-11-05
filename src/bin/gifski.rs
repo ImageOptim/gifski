@@ -57,7 +57,7 @@ fn bin_main() -> BinResult<()> {
                             .help("3 times faster encoding, but 10% lower quality and bigger file"))
                         .arg(Arg::with_name("quality")
                             .long("quality")
-                            .value_name("0-100")
+                            .value_name("1-100")
                             .takes_value(true)
                             .help("Lower quality may give smaller file"))
                         .arg(Arg::with_name("width")
@@ -99,7 +99,7 @@ fn bin_main() -> BinResult<()> {
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
 
     if settings.quality < 20 {
-        if settings.quality < 2 {
+        if settings.quality < 1 {
             Err("Quality too low")?;
         } else {
             println!("warning: quality {} will give really bad results", settings.quality);
