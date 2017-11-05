@@ -73,7 +73,7 @@ enum WriteInitState<W: Write> {
 }
 
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
-    let (queue, queue_iter) = ordparqueue::new("decoding".to_string(), 8);
+    let (queue, queue_iter) = ordparqueue::new("decoding".to_string(), 4);
 
     Ok((Collector {
         queue,
