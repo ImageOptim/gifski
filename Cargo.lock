@@ -260,7 +260,7 @@ version = "2.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "openmp-sys 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "openmp-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rgb 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "openmp-sys"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -585,7 +585,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum memchr 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "148fab2e51b4f1cfc66da2a7c32981d1d3c083a803978268bb11fe4b86925e7a"
 "checksum nom 3.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "05aec50c70fd288702bcd93284a8444607f3292dbdf2a30de5ea5dcdbe72287b"
 "checksum num_cpus 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "514f0d73e64be53ff320680ca671b64fe3fb91da01e1ae2ddc99eb51d453b20d"
-"checksum openmp-sys 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "912f6b04728eaa173e2e50ffa7ff7037c744319a6839fd209cce6312e5cf5d49"
+"checksum openmp-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "00cc67a9e45962e3b1cefac9faf3355d352ae4e6d3910b5fc9c82a2832c0e7eb"
 "checksum pbr 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e048e3afebb6c454bb1c5d0fe73fda54698b4715d78ed8e7302447c37736d23a"
 "checksum peeking_take_while 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 "checksum pkg-config 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)" = "3a8b4c6b8165cd1a1cd4b9b120978131389f64bdaf456435caa41e630edba903"

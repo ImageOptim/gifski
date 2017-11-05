@@ -12,7 +12,7 @@ It's a CLI tool, but it can also be compiled as library for seamelss use in othe
 
 See [releases](https://github.com/ImageOptim/gifski/releases) page for executables.
 
-If you have Rust, you can also get it with `cargo install gifski`. Run `cargo build --release` to build from suorce.
+If you have Rust, you can also get it with `cargo install gifski`. Run `cargo build --release --features=openmp` to build from suorce.
 
 ## Usage
 
@@ -36,8 +36,12 @@ See `gifski -h` for more options.
 
 AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license. I can offer alternative licensing options.
 
-## Building with built-in video support
+## Building
 
-Compile with `cargo build --release --features=video`.
+Enable OpenMP with `--features=openmp` (supported on macOS and Linux with GCC). It makes encoding more than twice as fast.
+
+### With built-in video support
+
+Compile with `cargo build --release --features=video,openmp`.
 
 Video support requires ffmpeg library. When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.html) apply. You may need to have a patent license to use H.264/H.265 video (I recommend using VP9/WebM instead).
