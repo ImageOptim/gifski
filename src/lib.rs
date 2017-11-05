@@ -42,6 +42,8 @@ use progress::*;
 use std::path::PathBuf;
 use std::io::prelude::*;
 use rayon::prelude::*;
+use std::sync::Arc;
+use std::borrow::Cow;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
@@ -60,8 +62,14 @@ pub struct Collector {
 }
 
 pub struct Writer {
-    queue_iter: OrdQueueIter<DecodedImage>,
+    queue_iter: Option<OrdQueueIter<DecodedImage>>,
     settings: Settings,
+}
+
+struct GIFFrame {
+    image: ImgVec<u8>,
+    pal: Vec<RGBA8>,
+    delay: u16,
 }
 
 /// Encoder is initialized after first frame is decoded,
@@ -79,7 +87,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         width: settings.width,
         height: settings.height,
     }, Writer {
-        queue_iter,
+        queue_iter: Some(queue_iter),
         settings,
     }))
 }
@@ -152,30 +160,69 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    fn write_gif_frame<W: Write>(image: ImgRef<u8>, pal: &[RGBA8], transparent_index: Option<u8>, delay: u16, enc: &mut Encoder<W>) -> CatResult<()> {
-        let mut pal_rgb = Vec::with_capacity(3 * pal.len());
-        for p in pal {
-            pal_rgb.extend_from_slice([p.rgb()].as_bytes());
-        }
 
-        enc.write_frame(&Frame {
-            delay,
-            dispose: DisposalMethod::Keep,
-            transparent: transparent_index,
-            needs_user_input: false,
-            top: 0,
-            left: 0,
-            width: image.width as u16,
-            height: image.height as u16,
-            interlaced: false,
-            palette: Some(pal_rgb),
-            buffer: image.buf.into(),
-        })?;
+    fn write_frames<W: Write + Send>(write_queue_iter: OrdQueueIter<Arc<GIFFrame>>, outfile: W, settings: &Settings, reporter: &mut ProgressReporter) -> CatResult<()> {
+        let mut enc = WriteInitState::Uninit(outfile);
+
+        for f in write_queue_iter {
+            let GIFFrame {ref pal, ref image, delay} = *f;
+            reporter.increase();
+
+            let mut transparent_index = None;
+            let mut pal_rgb = Vec::with_capacity(3 * pal.len());
+            for (i, p) in pal.into_iter().enumerate() {
+                if p.a == 0 {
+                    transparent_index = Some(i as u8);
+                }
+                pal_rgb.extend_from_slice([p.rgb()].as_bytes());
+            }
+
+            enc = match enc {
+                WriteInitState::Uninit(w) => {
+                    let mut enc = Encoder::new(w, image.width as u16, image.height as u16, &[])?;
+                    if !settings.once {
+                        enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
+                    }
+                    WriteInitState::Init(enc)
+                },
+                x => x,
+            };
+            let enc = match enc {
+                WriteInitState::Init(ref mut r) => r,
+                _ => unreachable!(),
+            };
+
+            enc.write_frame(&Frame {
+                delay,
+                dispose: DisposalMethod::Keep,
+                transparent: transparent_index,
+                needs_user_input: false,
+                top: 0,
+                left: 0,
+                width: image.width as u16,
+                height: image.height as u16,
+                interlaced: false,
+                palette: Some(pal_rgb),
+                buffer: Cow::Borrowed(&image.buf),
+            })?;
+        }
         Ok(())
     }
 
-    pub fn write<W: Write + Send>(self, outfile: W, reporter: &mut ProgressReporter) -> CatResult<()> {
-        let mut decode_iter = self.queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
+    pub fn write<W: Write + Send>(mut self, outfile: W, reporter: &mut ProgressReporter) -> CatResult<()> {
+        let (write_queue, write_queue_iter) = ordqueue::new(4);
+        let queue_iter = self.queue_iter.take().unwrap();
+        let settings = &self.settings;
+        let (make_res, write_res) = rayon::join(|| {
+            Self::make_frames(queue_iter, write_queue, settings)
+        }, || {
+            Self::write_frames(write_queue_iter, outfile, settings, reporter)
+        });
+        make_res?; write_res
+    }
+
+    fn make_frames(queue_iter: OrdQueueIter<DecodedImage>, mut write_queue: OrdQueue<Arc<GIFFrame>>, settings: &Settings) -> CatResult<()> {
+        let mut decode_iter = queue_iter.enumerate().map(|(i,tmp)| tmp.map(|(image, delay)|(i,image,delay)));
 
         let mut screen = None;
         let mut curr_frame = if let Some(a) = decode_iter.next() {
@@ -189,9 +236,7 @@ impl Writer {
             None
         };
 
-        let mut enc = WriteInitState::Uninit(outfile);
         while let Some((i, image, delay)) = curr_frame.take() {
-            reporter.increase();
             curr_frame = next_frame.take();
             next_frame = if let Some(a) = decode_iter.next() {
                 Some(a?)
@@ -225,7 +270,7 @@ impl Writer {
 
             if has_prev_frame {
                 debug_assert_eq!(screen.pixels.stride(), image.stride());
-                let q = 100 - self.settings.quality as u32;
+                let q = 100 - settings.quality as u32;
                 let min_diff = 80 + q * q;
                 importance_map.par_iter_mut().zip(screen.pixels.buf.par_iter().cloned().zip(image.buf.par_iter().cloned()))
                 .for_each(|(px, (a,b))| {
@@ -247,31 +292,18 @@ impl Writer {
 
             let (image8, image8_pal) = {
                 let bg = if has_prev_frame {Some(screen.pixels.as_ref())} else {None};
-                Self::quantize(image.as_ref(), &importance_map, bg, &self.settings)?
-            };
-
-            enc = match enc {
-                WriteInitState::Uninit(w) => {
-                    let mut enc = Encoder::new(w, image8.width as u16, image8.height as u16, &[])?;
-                    if !self.settings.once {
-                        enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
-                    }
-                    WriteInitState::Init(enc)
-                },
-                x => x,
-            };
-            let enc = match enc {
-                WriteInitState::Init(ref mut r) => r,
-                _ => unreachable!(),
+                Self::quantize(image.as_ref(), &importance_map, bg, settings)?
             };
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
-            let (blit_res, enc_res) = rayon::join(|| {
-                screen.blit(Some(&image8_pal), gif::DisposalMethod::Keep, 0, 0, image8.as_ref(), transparent_index)
-            }, || {
-                Self::write_gif_frame(image8.as_ref(), &image8_pal, transparent_index, delay, enc)
+            let frame = Arc::new(GIFFrame {
+                image: image8,
+                pal: image8_pal,
+                delay,
             });
-            blit_res?; enc_res?;
+
+            write_queue.push(i, frame.clone())?;
+            screen.blit(Some(&frame.pal), gif::DisposalMethod::Keep, 0, 0, frame.image.as_ref(), transparent_index)?;
         }
 
         Ok(())
