@@ -156,5 +156,12 @@ fn get_video_decoder(path: &Path) -> BinResult<Box<Source + Send>> {
 
 #[cfg(not(feature = "video"))]
 fn get_video_decoder(_: &Path) -> BinResult<Box<Source + Send>> {
-    Err("This executable has been compiled without video support")?
+    Err(r"Video support is permanently disabled in this executable.
+
+To enable video decoding you need to recompile gifski from source with:
+cargo build --release --features=video
+
+Alternatively, use ffmpeg command to export PNG frames, and then specify
+the PNG files as input for this executable.
+")?
 }
