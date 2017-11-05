@@ -91,12 +91,23 @@ fn bin_main() -> BinResult<()> {
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
         height: parse_opt(matches.value_of("height")).chain_err(|| "Invalid height")?,
-        quality: parse_opt(matches.value_of("quality")).chain_err(|| "Invalid quality")?.unwrap_or(100).min(100),
+        quality: parse_opt(matches.value_of("quality")).chain_err(|| "Invalid quality")?.unwrap_or(100),
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
     };
     let quiet = matches.is_present("quiet");
     let fps: usize = matches.value_of("fps").ok_or("Missing fps")?.parse().chain_err(|| "FPS must be a number")?;
+
+    if settings.quality < 20 {
+        if settings.quality < 2 {
+            Err("Quality too low")?;
+        } else {
+            println!("warning: quality {} will give really bad results", settings.quality);
+        }
+    } else if settings.quality > 100 {
+        Err("Quality 100 is maximum")?;
+    }
+
     let (mut collector, writer) = gifski::new(settings)?;
 
     let mut progress: Box<ProgressReporter> = if quiet {
