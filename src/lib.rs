@@ -16,7 +16,6 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-extern crate threadpool;
 extern crate rgb;
 extern crate gif;
 extern crate imgref;
@@ -35,8 +34,8 @@ use imagequant::*;
 
 mod error;
 pub use error::*;
-mod ordparqueue;
-use ordparqueue::*;
+mod ordqueue;
+use ordqueue::*;
 pub mod progress;
 use progress::*;
 
@@ -57,11 +56,11 @@ pub struct Settings {
 pub struct Collector {
     pub width: Option<u32>,
     pub height: Option<u32>,
-    queue: OrdParQueue<DecodedImage>,
+    queue: OrdQueue<DecodedImage>,
 }
 
 pub struct Writer {
-    queue_iter: OrdParQueueIter<DecodedImage>,
+    queue_iter: OrdQueueIter<DecodedImage>,
     settings: Settings,
 }
 
@@ -73,7 +72,7 @@ enum WriteInitState<W: Write> {
 }
 
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
-    let (queue, queue_iter) = ordparqueue::new("decoding".to_string(), 4);
+    let (queue, queue_iter) = ordqueue::new(4);
 
     Ok((Collector {
         queue,
@@ -88,24 +87,20 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
 /// Collect frames that will be encoded
 impl Collector {
     pub fn fail<E: Into<Error>>(mut self, err: E) {
-        self.queue.push_sync(Err(err.into())).expect("Failed so hard it can't even report failure");
+        self.queue.push(0, Err(err.into())).expect("Failed so hard it can't even report failure");
     }
 
-    pub fn add_frame_rgba_sync(&mut self, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
-        self.queue.push_sync(Ok((Self::resized(image, self.width, self.height), delay)))?;
-        Ok(())
+    pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
+        self.queue.push(frame_index, Ok((Self::resized(image, self.width, self.height), delay)))
     }
 
-    pub fn add_frame_png_file(&mut self, path: PathBuf, delay: u16) {
-        // Frames are decoded async in a queue
+    pub fn add_frame_png_file(&mut self, frame_index: usize,  path: PathBuf, delay: u16) -> CatResult<()> {
         let width = self.width;
         let height = self.height;
-        self.queue.push(move || {
-            let image = lodepng::decode32_file(&path)
-                .chain_err(|| format!("Can't load {}", path.display()))?;
+        let image = lodepng::decode32_file(&path)
+            .chain_err(|| format!("Can't load {}", path.display()))?;
 
-            Ok((Self::resized(ImgVec::new(image.buffer, image.width, image.height), width, height), delay))
-        });
+        self.queue.push(frame_index, Ok((Self::resized(ImgVec::new(image.buffer, image.width, image.height), width, height), delay)))
     }
 
     fn resized(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {

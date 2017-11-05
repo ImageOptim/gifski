@@ -1,59 +1,45 @@
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
-use threadpool::ThreadPool;
 use std::sync::mpsc;
 use error::*;
 
-pub struct OrdParQueue<T> {
-    pool: ThreadPool,
-    current_index: usize,
+pub struct OrdQueue<T> {
     sender: mpsc::SyncSender<ReverseTuple<T>>,
 }
 
-pub struct OrdParQueueIter<T> {
+pub struct OrdQueueIter<T> {
     receiver: mpsc::Receiver<ReverseTuple<T>>,
     next_index: usize,
     receive_buffer: BinaryHeap<ReverseTuple<T>>,
 }
 
-pub fn new<T>(name: String, num_cpus: usize) -> (OrdParQueue<T>, OrdParQueueIter<T>) {
-    let (sender, receiver) = mpsc::sync_channel(num_cpus);
-    (OrdParQueue {
-        pool: ThreadPool::with_name(name, num_cpus),
+pub fn new<T>(depth: usize) -> (OrdQueue<T>, OrdQueueIter<T>) {
+    let (sender, receiver) = mpsc::sync_channel(depth);
+    (OrdQueue {
         sender,
-        current_index: 0,
-    }, OrdParQueueIter {
+    }, OrdQueueIter {
         receiver,
         next_index: 0,
         receive_buffer: BinaryHeap::new()
     })
 }
 
-impl<T: Send + 'static> OrdParQueue<T> {
-    pub fn push_sync(&mut self, item: T) -> CatResult<()> {
-        self.sender.send(ReverseTuple(self.current_index, item)).map_err(|_| ErrorKind::ThreadSend)?;
-        self.current_index += 1;
+impl<T: Send + 'static> OrdQueue<T> {
+    pub fn push(&mut self, index: usize, item: T) -> CatResult<()> {
+        self.sender.send(ReverseTuple(index, item)).map_err(|_| ErrorKind::ThreadSend)?;
         Ok(())
-    }
-
-    pub fn push<F>(&mut self, async_callback: F) where F: FnOnce() -> T + Send + 'static {
-        let tx = self.sender.clone();
-        let i = self.current_index;
-        self.current_index += 1;
-        self.pool.execute(move || {
-            let res = async_callback();
-            tx.send(ReverseTuple(i, res)).ok(); // ignore error, panic is inappropriate here
-        });
     }
 }
 
 
-impl<T> Iterator for OrdParQueueIter<T> {
+impl<T> Iterator for OrdQueueIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
         while self.receive_buffer.peek().map(|i|i.0) != Some(self.next_index) {
             match self.receiver.recv() {
-                Ok(item) => self.receive_buffer.push(item),
+                Ok(item) => {
+                    self.receive_buffer.push(item);
+                },
                 Err(_) => {
                     // Sender dropped (but continue to dump receive_buffer buffer)
                     break;

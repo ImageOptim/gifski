@@ -2,7 +2,7 @@ use std::io::Stdout;
 pub use pbr::ProgressBar;
 
 /// A trait that is used to report progress to some consumer.
-pub trait ProgressReporter {
+pub trait ProgressReporter: Send {
     /// Increase the progress counter.
     fn increase(&mut self);
 

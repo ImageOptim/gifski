@@ -6,6 +6,7 @@ extern crate gifski;
 extern crate ffmpeg;
 extern crate imgref;
 extern crate rgb;
+extern crate rayon;
 
 #[cfg(feature = "video")]
 mod video;
@@ -110,19 +111,26 @@ fn bin_main() -> BinResult<()> {
         Box::new(pb)
     };
 
-    if frames.len() == 1 {
-        decode_video(Path::new(frames[0]), collector)?;
-    } else {
-        for (i, frame) in frames.into_iter().enumerate() {
-            let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
-            collector.add_frame_png_file(PathBuf::from(frame), delay as u16);
+    let file = File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?;
+
+    let (decode_res, write_res) = rayon::join(move || -> BinResult<()> {
+        if frames.len() == 1 {
+            decode_video(Path::new(frames[0]), collector)?;
+        } else {
+            for (i, frame) in frames.into_iter().enumerate() {
+                let delay = ((i + 1) * 100 / fps) - (i * 100 / fps); // See telecine/pulldown.
+                collector.add_frame_png_file(i, PathBuf::from(frame), delay as u16)?;
+            }
+            drop(collector); // necessary to prevent writer waiting for more frames forever
         }
-        drop(collector); // necessary to prevent writer waiting for more frames forever
-    }
+        Ok(())
+    }, move || -> BinResult<()> {
+        writer.write(file, &mut *progress)?;
+        progress.done(&format!("gifski created {}", output_path.display()));
+        Ok(())
+    });
+    decode_res?; write_res?;
 
-    writer.write(File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?, &mut *progress)?;
-
-    progress.done(&format!("gifski created {}", output_path.display()));
     Ok(())
 }
 

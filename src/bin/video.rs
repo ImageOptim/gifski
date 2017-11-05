@@ -1,7 +1,6 @@
 use ffmpeg;
 use error::*;
 use gifski::Collector;
-use std::thread;
 use std::path::Path;
 use imgref::*;
 use rgb::*;
@@ -17,12 +16,10 @@ impl Decoder {
     pub fn collect_frames_async(self, path: &Path, mut dest: Collector) -> BinResult<()> {
         let input_context = ffmpeg::format::input(&path)
             .chain_err(|| format!("Unable to open video file {}", path.display()))?;
-        thread::spawn(move || {
-            if let Err(e) = self.collect_frames(input_context, &mut dest) {
-                dest.fail(e.to_string());
-            }
-            // dest is dropped here, which signals end of input
-        });
+        if let Err(e) = self.collect_frames(input_context, &mut dest) {
+            dest.fail(e.to_string());
+        }
+        // dest is dropped here, which signals end of input
         Ok(())
     }
 
