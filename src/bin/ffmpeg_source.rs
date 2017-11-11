@@ -6,12 +6,12 @@ use imgref::*;
 use rgb::*;
 use source::*;
 
-pub struct Decoder {
+pub struct FfmpegDecoder {
     input_context: ffmpeg::format::context::Input,
     frames: u64,
 }
 
-impl Source for Decoder {
+impl Source for FfmpegDecoder {
     fn total_frames(&self) -> u64 {
         self.frames
     }
@@ -20,7 +20,7 @@ impl Source for Decoder {
     }
 }
 
-impl Decoder {
+impl FfmpegDecoder {
     pub fn new(path: &Path) -> BinResult<Self> {
         ffmpeg::init().chain_err(|| "Unable to initialize ffmpeg")?;
         let input_context = ffmpeg::format::input(&path)

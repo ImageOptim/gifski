@@ -11,7 +11,7 @@ extern crate rayon;
 extern crate glob;
 
 #[cfg(feature = "video")]
-mod video;
+mod ffmpeg_source;
 mod png;
 mod source;
 use source::*;
@@ -153,7 +153,7 @@ fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&s
 
 #[cfg(feature = "video")]
 fn get_video_decoder(path: &Path) -> BinResult<Box<Source + Send>> {
-    Ok(Box::new(video::Decoder::new(path)?))
+    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path)?))
 }
 
 #[cfg(not(feature = "video"))]
