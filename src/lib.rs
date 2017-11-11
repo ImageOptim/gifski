@@ -229,6 +229,7 @@ impl Writer {
         } else {
             Err("Found no usable frames to encode")?
         };
+        let mut importance_map = vec![255u8; curr_frame.as_ref().unwrap().1.buf.len()];
         let mut next_frame = if let Some(a) = decode_iter.next() {
             Some(a?)
         } else {
@@ -243,22 +244,19 @@ impl Writer {
                 None
             };
 
-            let has_prev_frame = i > 0;
-
-            let mut importance_map: Vec<u8> = if let Some((_, ref next, _)) = next_frame {
+            if let Some((_, ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
                     Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
                         next.width(), next.height(), image.width(), image.height()))?;
                 }
 
                 debug_assert_eq!(next.width(), image.width());
-                next.rows().zip(image.rows()).flat_map(|(a,b)| a.iter().cloned().zip(b.iter().cloned())).map(|(a,b)| {
+                importance_map.clear();
+                importance_map.extend(next.rows().zip(image.rows()).flat_map(|(a,b)| a.iter().cloned().zip(b.iter().cloned())).map(|(a,b)| {
                     // Even if next frame completely overwrites it, it's still somewhat important to display current one
                     // but pixels that will stay unchanged should have higher quality
                     255 - (colordiff(a,b) / (255*255*6/170)) as u8
-                }).collect()
-            } else {
-                vec![255; image.buf.len()]
+                }));
             };
 
             if screen.is_none() {
@@ -266,6 +264,7 @@ impl Writer {
             }
             let screen = screen.as_mut().unwrap();
 
+            let has_prev_frame = i > 0;
             if has_prev_frame {
                 let q = 100 - settings.quality as u32;
                 let min_diff = 80 + q * q;
