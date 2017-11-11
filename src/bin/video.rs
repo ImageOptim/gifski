@@ -58,7 +58,7 @@ impl Decoder {
             let mut rgba_frame = ffmpeg::util::frame::video::Video::empty();
             converter.run(&vid_frame, &mut rgba_frame)?;
 
-            let stride = rgba_frame.width() as usize; // rgba_frame.stride(0) as usize /4
+            let stride = rgba_frame.stride(0) as usize /4;
             let rgba_frame = ImgVec::new_stride(
                 rgba_frame.data(0).as_rgba().to_owned(),
                 rgba_frame.width() as usize,

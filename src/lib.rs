@@ -41,7 +41,6 @@ use progress::*;
 
 use std::path::PathBuf;
 use std::io::prelude::*;
-use rayon::prelude::*;
 use std::sync::Arc;
 use std::borrow::Cow;
 
@@ -107,9 +106,13 @@ impl Collector {
         self.queue.push(frame_index, Ok((Self::resized(ImgVec::new(image.buffer, image.width, image.height), width, height), delay)))
     }
 
-    fn resized(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
+    fn resized(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
         if let Some(width) = width {
-            assert_eq!(image.width(), image.stride());
+            if image.width() != image.stride() {
+                let mut contig = Vec::with_capacity(image.width()*image.height());
+                contig.extend(image.rows().flat_map(|r| r.iter().cloned()));
+                image = ImgVec::new(contig, image.width(), image.height());
+            }
             let dst_width = (width as usize).min(image.width());
             let dst_height = height.map(|h| (h as usize).min(image.height())).unwrap_or(image.height() * dst_width / image.width());
             let mut r = resize::new(image.width(), image.height(), dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
@@ -141,7 +144,7 @@ impl Writer {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality);
-        let mut img = liq.new_image(image.buf, image.width(), image.height(), 0.)?;
+        let mut img = liq.new_image_stride(image.buf, image.width(), image.height(), image.stride(), 0.)?;
         img.set_importance_map(importance_map)?;
         if let Some(bg) = background {
             img.set_background(liq.new_image(bg.buf, bg.width(), bg.height(), 0.)?)?;
@@ -175,7 +178,7 @@ impl Writer {
 
             enc = match enc {
                 WriteInitState::Uninit(w) => {
-                    let mut enc = Encoder::new(w, image.width as u16, image.height as u16, &[])?;
+                    let mut enc = Encoder::new(w, image.width() as u16, image.height() as u16, &[])?;
                     if !settings.once {
                         enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
                     }
@@ -195,8 +198,8 @@ impl Writer {
                 needs_user_input: false,
                 top: 0,
                 left: 0,
-                width: image.width as u16,
-                height: image.height as u16,
+                width: image.width() as u16,
+                height: image.height() as u16,
                 interlaced: false,
                 palette: Some(pal_rgb),
                 buffer: Cow::Borrowed(&image.buf),
@@ -243,14 +246,13 @@ impl Writer {
             let has_prev_frame = i > 0;
 
             let mut importance_map: Vec<u8> = if let Some((_, ref next, _)) = next_frame {
-
                 if next.width() != image.width() || next.height() != image.height() {
                     Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
                         next.width(), next.height(), image.width(), image.height()))?;
                 }
 
-                debug_assert_eq!(next.stride(), image.stride());
-                next.buf.par_iter().cloned().zip(image.buf.par_iter().cloned()).map(|(a,b)| {
+                debug_assert_eq!(next.width(), image.width());
+                next.rows().zip(image.rows()).flat_map(|(a,b)| a.iter().cloned().zip(b.iter().cloned())).map(|(a,b)| {
                     // Even if next frame completely overwrites it, it's still somewhat important to display current one
                     // but pixels that will stay unchanged should have higher quality
                     255 - (colordiff(a,b) / (255*255*6/170)) as u8
@@ -265,10 +267,13 @@ impl Writer {
             let screen = screen.as_mut().unwrap();
 
             if has_prev_frame {
-                debug_assert_eq!(screen.pixels.stride(), image.stride());
                 let q = 100 - settings.quality as u32;
                 let min_diff = 80 + q * q;
-                importance_map.par_iter_mut().zip(screen.pixels.buf.par_iter().cloned().zip(image.buf.par_iter().cloned()))
+                debug_assert_eq!(image.width(), screen.pixels.width());
+                importance_map.chunks_mut(image.width()).zip(screen.pixels.rows().zip(image.rows()))
+                .flat_map(|(px, (a,b))| {
+                    px.iter_mut().zip(a.iter().cloned().zip(b.iter().cloned()))
+                })
                 .for_each(|(px, (a,b))| {
                     // TODO: try comparing with max-quality dithered non-transparent frame, but at half res to avoid dithering confusing the results
                     // and pick pixels/areas that are better left transparent?
