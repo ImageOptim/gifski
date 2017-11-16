@@ -43,9 +43,11 @@ use std::path::PathBuf;
 use std::io::prelude::*;
 use std::sync::Arc;
 use std::borrow::Cow;
+use std::thread;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
+#[derive(Copy, Clone)]
 pub struct Settings {
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -211,13 +213,13 @@ impl Writer {
     pub fn write<W: Write + Send>(mut self, outfile: W, reporter: &mut ProgressReporter) -> CatResult<()> {
         let (write_queue, write_queue_iter) = ordqueue::new(4);
         let queue_iter = self.queue_iter.take().unwrap();
-        let settings = &self.settings;
-        let (make_res, write_res) = rayon::join(|| {
-            Self::make_frames(queue_iter, write_queue, settings)
-        }, || {
-            Self::write_frames(write_queue_iter, outfile, settings, reporter)
+        let settings = self.settings.clone();
+        let make_thread = thread::spawn(move || {
+            Self::make_frames(queue_iter, write_queue, &settings)
         });
-        make_res?; write_res
+        Self::write_frames(write_queue_iter, outfile, &self.settings, reporter)?;
+        make_thread.join().unwrap()?;
+        Ok(())
     }
 
     fn make_frames(queue_iter: OrdQueueIter<DecodedImage>, mut write_queue: OrdQueue<Arc<GIFFrame>>, settings: &Settings) -> CatResult<()> {

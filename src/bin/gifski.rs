@@ -27,6 +27,7 @@ use clap::{App, Arg, AppSettings};
 use std::time::Duration;
 use std::path::{Path, PathBuf};
 use std::fs::File;
+use std::thread;
 
 #[cfg(feature = "video")]
 const VIDEO_FRAMES_ARG_HELP: &'static str = "one MP4/WebM video, or multiple PNG animation frames";
@@ -131,15 +132,14 @@ fn bin_main() -> BinResult<()> {
     };
 
     let (collector, writer) = gifski::new(settings)?;
-    let file = File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?;
-    let (decode_res, write_res) = rayon::join(move || -> BinResult<()> {
+    let decode_thread = thread::spawn(move || {
         decoder.collect(collector)
-    }, move || -> BinResult<()> {
-        writer.write(file, &mut *progress)?;
-        progress.done(&format!("gifski created {}", output_path.display()));
-        Ok(())
     });
-    decode_res?; write_res?;
+
+    let file = File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?;
+    writer.write(file, &mut *progress)?;
+    decode_thread.join().unwrap()?;
+    progress.done(&format!("gifski created {}", output_path.display()));
 
     Ok(())
 }
