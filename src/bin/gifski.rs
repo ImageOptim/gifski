@@ -107,7 +107,7 @@ fn bin_main() -> BinResult<()> {
         if settings.quality < 1 {
             Err("Quality too low")?;
         } else {
-            println!("warning: quality {} will give really bad results", settings.quality);
+            eprintln!("warning: quality {} will give really bad results", settings.quality);
         }
     } else if settings.quality > 100 {
         Err("Quality 100 is maximum")?;
