@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "0.6.0"
+version = "0.6.1"
 
 
 [package.metadata.deb]
@@ -28,11 +28,11 @@ gif-dispose = "2.0.1"
 glob = "0.2.11"
 imagequant = "2.11.6"
 imgref = "1.3.0"
-lodepng = "2.0.4"
+lodepng = "2.0.5"
 pbr = "1.0.0"
-rayon = "0.8.2"
+rayon = "0.9.0"
 resize = "0.3.0"
-rgb = "0.8.1"
+rgb = "0.8.2"
 
 [dependencies.ffmpeg]
 optional = true
