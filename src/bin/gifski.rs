@@ -7,8 +7,7 @@ extern crate ffmpeg;
 extern crate imgref;
 extern crate rgb;
 extern crate rayon;
-#[cfg(windows)]
-extern crate glob;
+extern crate wild;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
@@ -89,9 +88,9 @@ fn bin_main() -> BinResult<()> {
                             .empty_values(false)
                             .use_delimiter(false)
                             .required(true))
-                        .get_matches();
+                        .get_matches_from(wild::args());
 
-    let frames = emulate_glob(matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect())?;
+    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect();
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,
@@ -168,23 +167,3 @@ the PNG files as input for this executable.
 ")?
 }
 
-
-#[cfg(not(windows))]
-fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
-    Ok(paths)
-}
-
-#[cfg(windows)]
-fn emulate_glob(paths: Vec<PathBuf>) -> BinResult<Vec<PathBuf>> {
-    let mut out = Vec::with_capacity(paths.len());
-    for p in paths {
-        match glob::glob(&p.to_string_lossy()) {
-            Ok(g) => {
-                let g = g.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())?;
-                out.extend(g);
-            },
-            Err(_) => out.push(p),
-        }
-    }
-    Ok(out)
-}

@@ -235,6 +235,7 @@ dependencies = [
  "rayon 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "resize 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rgb 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "wild 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -532,6 +533,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "wild"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "glob 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "winapi"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -608,5 +617,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum vec_map 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "887b5b631c2ad01628bbbaa7dd4c869f80d3186688f8d0b6f58774fbe324988c"
 "checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 "checksum which 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "4be6cfa54dab45266e98b5d7be2f8ce959ddd49abd141a05d52dce4b07f803bb"
+"checksum wild 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b4928e22786d2ef6b28d260abe3da90f3bf07ffe049802230722864f94ece17f"
 "checksum winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "167dc9d6949a9b857f3451275e911c3f44255842c1f7a76f33c55103a909087a"
 "checksum winapi-build 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "2d315eee3b34aca4797b2da6b13ed88266e6d612562a0c46390af8299fc699bc"
