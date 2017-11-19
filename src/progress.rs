@@ -10,6 +10,7 @@ pub trait ProgressReporter: Send {
     fn done(&mut self, msg: &str);
 }
 
+/// No-op progress reporter
 pub struct NoProgress {}
 
 impl ProgressReporter for NoProgress {

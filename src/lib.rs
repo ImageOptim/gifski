@@ -49,19 +49,29 @@ type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
 #[derive(Copy, Clone)]
 pub struct Settings {
+    /// Resize to max this width if set
     pub width: Option<u32>,
+    /// Resize to max this height if width is set. Note that aspect ratio is not preserved.
     pub height: Option<u32>,
+    /// 1-100
     pub quality: u8,
+    /// If true, looping is disabled
     pub once: bool,
+    /// Lower quality, but faster encode
     pub fast: bool,
 }
 
+/// Collect frames that will be encoded
+///
+/// Note that writing will finish only when the collector is dropped.
+/// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
 pub struct Collector {
-    pub width: Option<u32>,
-    pub height: Option<u32>,
+    width: Option<u32>,
+    height: Option<u32>,
     queue: OrdQueue<DecodedImage>,
 }
 
+/// Perform GIF writing
 pub struct Writer {
     queue_iter: Option<OrdQueueIter<DecodedImage>>,
     settings: Settings,
@@ -80,6 +90,10 @@ enum WriteInitState<W: Write> {
     Init(Encoder<W>),
 }
 
+/// Start new encoding
+///
+/// Encoding is multi-threaded, and the `Collector` and `Writer`
+/// can be used on sepate threads.
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     let (queue, queue_iter) = ordqueue::new(4);
 
@@ -93,12 +107,14 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     }))
 }
 
-/// Collect frames that will be encoded
 impl Collector {
+    /// Frame index starts at 0. Set each frame only once, but you can set them in any order.
+    /// Frame delay is in GIF units (1/100s).
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
         self.queue.push(frame_index, Ok((Self::resized(image, self.width, self.height), delay)))
     }
 
+    /// Read and decode a PNG file from disk. Frame index starts at 0. Frame delay is in GIF units (1/100s)
     pub fn add_frame_png_file(&mut self, frame_index: usize,  path: PathBuf, delay: u16) -> CatResult<()> {
         let width = self.width;
         let height = self.height;
@@ -161,7 +177,6 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-
     fn write_frames<W: Write + Send>(write_queue_iter: OrdQueueIter<Arc<GIFFrame>>, outfile: W, settings: &Settings, reporter: &mut ProgressReporter) -> CatResult<()> {
         let mut enc = WriteInitState::Uninit(outfile);
 
@@ -210,6 +225,11 @@ impl Writer {
         Ok(())
     }
 
+    /// Start writing frames. This function will not return until `Collector` is dropped.
+    ///
+    /// `outfile` can be any writer, such as `File` or `&mut Vec`.
+    ///
+    /// `ProgressReporter.increase()` is called each time a new frame is being written.
     pub fn write<W: Write + Send>(mut self, outfile: W, reporter: &mut ProgressReporter) -> CatResult<()> {
         let (write_queue, write_queue_iter) = ordqueue::new(4);
         let queue_iter = self.queue_iter.take().unwrap();
