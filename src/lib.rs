@@ -38,6 +38,7 @@ mod ordqueue;
 use ordqueue::*;
 pub mod progress;
 use progress::*;
+pub mod c_api;
 
 use std::path::PathBuf;
 use std::io::prelude::*;
