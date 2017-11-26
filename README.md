@@ -48,9 +48,11 @@ Enable OpenMP with `--features=openmp` (supported on macOS and Linux with GCC). 
 
 ### With built-in video support
 
+Install `ffmpeg` and its dependencies (probably `libavformat-dev`, `libavfilter-dev`, `libavdevice-dev`, `libclang-dev`, `clang`).
+
 Compile with `cargo build --release --features=video,openmp`.
 
-Video support requires ffmpeg library. When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.html) apply. You may need to have a patent license to use H.264/H.265 video (I recommend using VP9/WebM instead).
+When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.html) apply. You may need to have a patent license to use H.264/H.265 video (I recommend using VP9/WebM instead).
 
 ### Using from C
 
