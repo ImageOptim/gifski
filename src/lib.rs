@@ -15,6 +15,7 @@
  You should have received a copy of the GNU Affero General Public License
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#![doc(html_logo_url = "https://gif.ski/icon.png")]
 
 extern crate rgb;
 extern crate gif;

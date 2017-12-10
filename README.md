@@ -1,4 +1,4 @@
-# [gif.ski](https://gif.ski)
+# [<img width="100%" src="https://gif.ski/gifski.svg" alt="gif.ski">](https://gif.ski)
 
 Highest-quality GIF encoder based on [pngquant](https://pngquant.org).
 
@@ -6,13 +6,13 @@ Highest-quality GIF encoder based on [pngquant](https://pngquant.org).
 
 ![(CC) Blender Foundation | gooseberry.blender.org](https://gif.ski/demo.gif)
 
-It's a CLI tool, but it can also be compiled as library for seamelss use in other apps (note that for closed-source apps you need a commercial pngquant license).
+It's a CLI tool, but it can also be compiled [as a library](https://docs.rs/gifski) for seamelss use in other apps.
 
 ## Download and install
 
 See [releases](https://github.com/ImageOptim/gifski/releases) page for executables.
 
-If you have Rust, you can also get it with `cargo install gifski`. Run `cargo build --release --features=openmp` to build from suorce.
+If you have [Rust](https://www.rust-lang.org/install.html), you can also get it with `cargo install gifski`. Run `cargo build --release --features=openmp` to build from suorce.
 
 ## Usage
 
