@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "clap 2.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",

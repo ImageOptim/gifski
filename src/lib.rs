@@ -83,6 +83,7 @@ struct GIFFrame {
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     delay: u16,
+    dispose: gif::DisposalMethod,
 }
 
 /// Encoder is initialized after first frame is decoded,
@@ -113,7 +114,7 @@ impl Collector {
     /// Frame index starts at 0. Set each frame only once, but you can set them in any order.
     /// Frame delay is in GIF units (1/100s).
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
-        self.queue.push(frame_index, Ok((Self::resized(image, self.width, self.height), delay)))
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height), delay)))
     }
 
     /// Read and decode a PNG file from disk. Frame index starts at 0. Frame delay is in GIF units (1/100s)
@@ -123,10 +124,10 @@ impl Collector {
         let image = lodepng::decode32_file(&path)
             .chain_err(|| format!("Can't load {}", path.display()))?;
 
-        self.queue.push(frame_index, Ok((Self::resized(ImgVec::new(image.buffer, image.width, image.height), width, height), delay)))
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), delay)))
     }
 
-    fn resized(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
+    fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
         if let Some(width) = width {
             if image.width() != image.stride() {
                 let mut contig = Vec::with_capacity(image.width()*image.height());
@@ -138,10 +139,28 @@ impl Collector {
             let mut r = resize::new(image.width(), image.height(), dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
             let mut dst = vec![RGBA::new(0,0,0,0); dst_width * dst_height];
             r.resize(image.buf.as_bytes(), dst.as_bytes_mut());
-            ImgVec::new(dst, dst_width, dst_height)
-        } else {
-            image
+            image = ImgVec::new(dst, dst_width, dst_height)
         }
+
+        const DITHER: [u8; 64] = [
+         0*2+8,48*2+8,12*2+8,60*2+8, 3*2+8,51*2+8,15*2+8,63*2+8,
+        32*2+8,16*2+8,44*2+8,28*2+8,35*2+8,19*2+8,47*2+8,31*2+8,
+         8*2+8,56*2+8, 4*2+8,52*2+8,11*2+8,59*2+8, 7*2+8,55*2+8,
+        40*2+8,24*2+8,36*2+8,20*2+8,43*2+8,27*2+8,39*2+8,23*2+8,
+         2*2+8,50*2+8,14*2+8,62*2+8, 1*2+8,49*2+8,13*2+8,61*2+8,
+        34*2+8,18*2+8,46*2+8,30*2+8,33*2+8,17*2+8,45*2+8,29*2+8,
+        10*2+8,58*2+8, 6*2+8,54*2+8, 9*2+8,57*2+8, 5*2+8,53*2+8,
+        42*2+8,26*2+8,38*2+8,22*2+8,41*2+8,25*2+8,37*2+8,21*2+8];
+
+        // Make transparency binary
+        for (y, row) in image.rows_mut().enumerate() {
+            for (x, px) in row.iter_mut().enumerate() {
+                if px.a < 255 {
+                    px.a = if px.a < DITHER[(y&7) * 8 + (x&7)] {0} else {255};
+                }
+            }
+        }
+        image
     }
 }
 
@@ -183,7 +202,7 @@ impl Writer {
         let mut enc = WriteInitState::Uninit(outfile);
 
         for f in write_queue_iter {
-            let GIFFrame {ref pal, ref image, delay} = *f;
+            let GIFFrame {ref pal, ref image, delay, dispose} = *f;
             reporter.increase();
 
             let mut transparent_index = None;
@@ -212,7 +231,7 @@ impl Writer {
 
             enc.write_frame(&Frame {
                 delay,
-                dispose: DisposalMethod::Keep,
+                dispose,
                 transparent: transparent_index,
                 needs_user_input: false,
                 top: 0,
@@ -260,6 +279,7 @@ impl Writer {
             None
         };
 
+        let mut previous_frame_dispose = gif::DisposalMethod::Background;
         while let Some((i, image, delay)) = curr_frame.take() {
             curr_frame = next_frame.take();
             next_frame = if let Some(a) = decode_iter.next() {
@@ -267,6 +287,8 @@ impl Writer {
             } else {
                 None
             };
+
+            let mut dispose = gif::DisposalMethod::Keep;
 
             if let Some((_, ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
@@ -276,10 +298,13 @@ impl Writer {
 
                 debug_assert_eq!(next.width(), image.width());
                 importance_map.clear();
-                importance_map.extend(next.rows().zip(image.rows()).flat_map(|(a,b)| a.iter().cloned().zip(b.iter().cloned())).map(|(a,b)| {
+                importance_map.extend(next.rows().zip(image.rows()).flat_map(|(n,curr)| n.iter().cloned().zip(curr.iter().cloned())).map(|(n,curr)| {
+                    if n.a < curr.a {
+                        dispose = gif::DisposalMethod::Background;
+                    }
                     // Even if next frame completely overwrites it, it's still somewhat important to display current one
                     // but pixels that will stay unchanged should have higher quality
-                    255 - (colordiff(a,b) / (255*255*6/170)) as u8
+                    255 - (colordiff(n,curr) / (255*255*6/170)) as u8
                 }));
             };
 
@@ -288,7 +313,7 @@ impl Writer {
             }
             let screen = screen.as_mut().unwrap();
 
-            let has_prev_frame = i > 0;
+            let has_prev_frame = i > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
             if has_prev_frame {
                 let q = 100 - settings.quality as u32;
                 let min_diff = 80 + q * q;
@@ -323,11 +348,13 @@ impl Writer {
             let frame = Arc::new(GIFFrame {
                 image: image8,
                 pal: image8_pal,
+                dispose,
                 delay,
             });
 
             write_queue.push(i, frame.clone())?;
-            screen.blit(Some(&frame.pal), gif::DisposalMethod::Keep, 0, 0, frame.image.as_ref(), transparent_index)?;
+            screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
+            previous_frame_dispose = dispose;
         }
 
         Ok(())
