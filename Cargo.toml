@@ -46,7 +46,7 @@ video = ["ffmpeg"]
 
 [lib]
 path = "src/lib.rs"
-crate-type = ["rlib", "staticlib"]
+crate-type = ["lib", "staticlib", "cdylib"]
 
 [profile.dev]
 opt-level = 1
