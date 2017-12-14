@@ -12,7 +12,7 @@ It's a CLI tool, but it can also be compiled [as a library](https://docs.rs/gifs
 
 See [releases](https://github.com/ImageOptim/gifski/releases) page for executables.
 
-If you have [Rust](https://www.rust-lang.org/install.html), you can also get it with `cargo install gifski`. Run `cargo build --release --features=openmp` to build from suorce.
+If you have [Rust](https://www.rust-lang.org/install.html), you can also get it with `cargo install gifski`. Run `cargo build --release --features=openmp` to build from source.
 
 If you have [Homebrew](https://brew.sh/), you can also get it with `brew install gifski`.
 
