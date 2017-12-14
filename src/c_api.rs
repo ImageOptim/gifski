@@ -2,8 +2,12 @@
 //!
 //! ```c
 //! gifski *g = gifski_new(&settings);
+//!
+//! // Call on decoder thread:
 //! gifski_add_frame_rgba(g, i, width, height, buffer, 5);
 //! gifski_end_adding_frames(g);
+//!
+//! // Call on encoder thread:
 //! gifski_write(g, "file.gif");
 //! gifski_drop(g);
 //! ```
@@ -87,6 +91,8 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
 /// Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
 ///
 /// Delay is in 1/100ths of a second
+///
+/// The call may block and wait until the encoder thread needs more frames.
 ///
 /// Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
 #[no_mangle]
