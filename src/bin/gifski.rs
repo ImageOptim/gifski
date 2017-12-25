@@ -27,6 +27,7 @@ use std::time::Duration;
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::thread;
+use std::env;
 
 #[cfg(feature = "video")]
 const VIDEO_FRAMES_ARG_HELP: &'static str = "one MP4/WebM video, or multiple PNG animation frames";
@@ -112,6 +113,8 @@ fn bin_main() -> BinResult<()> {
         Err("Quality 100 is maximum")?;
     }
 
+    check_if_path_exists(&frames[0])?;
+
     let mut decoder = if frames.len() == 1 {
         get_video_decoder(&frames[0])?
     } else {
@@ -141,6 +144,20 @@ fn bin_main() -> BinResult<()> {
     progress.done(&format!("gifski created {}", output_path.display()));
 
     Ok(())
+}
+
+fn check_if_path_exists(path: &Path) -> BinResult<()> {
+    if path.exists() {
+        Ok(())
+    } else {
+        let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
+        if path.to_str().map_or(false, |p| p.contains('*')) {
+            msg += "\nThe path contains a literal \"*\" character. If you want to select multiple files, don't put the special wildcard characters in quotes.";
+        } else if path.is_relative() {
+            msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
+        }
+        Err(msg)?
+    }
 }
 
 fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
