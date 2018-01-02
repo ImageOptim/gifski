@@ -36,7 +36,7 @@ wild = "0.1.0"
 
 [dependencies.ffmpeg]
 optional = true
-git = "https://github.com/pornel/rust-ffmpeg.git"
+git = "https://github.com/kornelski/rust-ffmpeg.git"
 features = ["codec", "format", "filter", "software-resampling", "software-scaling", "resampling" ]
 
 [features]
