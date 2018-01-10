@@ -22,6 +22,7 @@ use std::path::{PathBuf, Path};
 
 /// Settings for creating a new encoder instance. See `gifski_new`
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct GifskiSettings {
     /// Resize to max this width if non-0
     pub width: u32,
@@ -39,6 +40,54 @@ pub struct GifskiSettings {
 pub struct GifskiHandle {
     writer: Option<Writer>,
     collector: Option<Collector>,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[allow(non_camel_case_types)]
+pub enum GifskiError {
+    OK = 0,
+    NULL_ARG,
+    INVALID_STATE,
+    QUANT,
+    GIF,
+    THREAD_LOST,
+    NOT_FOUND,
+    PERMISSION_DENIED,
+    ALREADY_EXISTS,
+    INVALID_INPUT,
+    TIMED_OUT,
+    WRITE_ZERO,
+    INTERRUPTED,
+    UNEXPECTED_EOF,
+    OTHER,
+}
+
+impl From<CatResult<()>> for GifskiError {
+    fn from(res: CatResult<()>) -> Self {
+        use error::ErrorKind::*;
+        use std::io::ErrorKind as EK;
+        match res {
+            Ok(_) => GifskiError::OK,
+            Err(err) => match *err.kind() {
+                Quant(_) => GifskiError::QUANT,
+                Pal(_) => GifskiError::GIF,
+                ThreadSend => GifskiError::THREAD_LOST,
+                Io(ref err) => match err.kind() {
+                    EK::NotFound => GifskiError::NOT_FOUND,
+                    EK::PermissionDenied => GifskiError::PERMISSION_DENIED,
+                    EK::AlreadyExists => GifskiError::ALREADY_EXISTS,
+                    EK::InvalidInput | EK::InvalidData => GifskiError::INVALID_INPUT,
+                    EK::TimedOut => GifskiError::TIMED_OUT,
+                    EK::WriteZero => GifskiError::WRITE_ZERO,
+                    EK::Interrupted => GifskiError::INTERRUPTED,
+                    EK::UnexpectedEof => GifskiError::UNEXPECTED_EOF,
+                    _ => GifskiError::OTHER,
+                },
+                _ => GifskiError::OTHER,
+            },
+        }
+    }
 }
 
 /// Call to start the process
@@ -73,18 +122,18 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
 ///
 /// Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u32, file_path: *const c_char, delay: u16) -> bool {
+pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u32, file_path: *const c_char, delay: u16) -> GifskiError {
     if file_path.is_null() {
-        return false;
+        return GifskiError::NULL_ARG;
     }
     let g = unsafe {handle.as_mut().unwrap()};
     let path = PathBuf::from(unsafe {
         CStr::from_ptr(file_path).to_str().unwrap()
     });
     if let Some(ref mut c) = g.collector {
-        c.add_frame_png_file(index as usize, path, delay).is_ok()
+        c.add_frame_png_file(index as usize, path, delay).into()
     } else {
-        false
+        GifskiError::INVALID_STATE
     }
 }
 
@@ -96,33 +145,36 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
 ///
 /// Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> bool {
-    if pixels.is_null() {
-        return false;
+pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> GifskiError {
+    if handle.is_null() || pixels.is_null() {
+        return GifskiError::NULL_ARG;
     }
     let g = unsafe {handle.as_mut().unwrap()};
     if let Some(ref mut c) = g.collector {
         let px = unsafe {
             slice::from_raw_parts(pixels, width as usize * height as usize)
         };
-        c.add_frame_rgba(index as usize, ImgVec::new(px.to_owned(), width as usize, height as usize), delay).is_ok()
+        c.add_frame_rgba(index as usize, ImgVec::new(px.to_owned(), width as usize, height as usize), delay).into()
     } else {
-        false
+        GifskiError::INVALID_STATE
     }
 }
 
 /// You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
 #[no_mangle]
-pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> bool {
+pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiError {
     let g = unsafe {handle.as_mut().unwrap()};
-    g.collector.take().is_some()
+    match g.collector.take() {
+        Some(_) => GifskiError::OK,
+        None => GifskiError::INVALID_STATE,
+    }
 }
 
 /// Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
 #[no_mangle]
-pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_char) -> bool {
+pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_char) -> GifskiError {
     if destination.is_null() {
-        return false;
+        return GifskiError::NULL_ARG;
     }
     let g = unsafe {handle.as_mut().unwrap()};
     let path = Path::new(unsafe {
@@ -130,10 +182,10 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
     });
     if let Ok(file) = File::create(path) {
         if let Some(writer) = g.writer.take() {
-            return writer.write(file, &mut NoProgress {}).is_ok();
+            return writer.write(file, &mut NoProgress {}).into();
         }
     }
-    false
+    GifskiError::INVALID_STATE
 }
 
 /// Call to free all memory
@@ -155,7 +207,9 @@ fn c() {
         fast: true,
     });
     assert!(!g.is_null());
-    assert!(gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0,0,0,0), 5));
-    assert!(gifski_end_adding_frames(g));
+    assert_eq!(GifskiError::NULL_ARG, gifski_add_frame_rgba(g, 0, 1, 1, ptr::null(), 5));
+    assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0,0,0,0), 5));
+    assert_eq!(GifskiError::OK, gifski_end_adding_frames(g));
+    assert_eq!(GifskiError::INVALID_STATE, gifski_end_adding_frames(g));
     gifski_drop(g);
 }

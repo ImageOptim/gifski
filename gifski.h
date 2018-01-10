@@ -31,10 +31,46 @@ typedef struct {
   bool fast;
 } GifskiSettings;
 
+enum GifskiError {
+  GIFSKI_OK = 0,
+  /** one of input arguments was NULL */
+  GIFSKI_NULL_ARG,
+  /** a one-time function was called twice, or functions were called in wrong order */
+  GIFSKI_INVALID_STATE,
+  /** internal error related to palette quantization */
+  GIFSKI_QUANT,
+  /** internal error related to gif composing */
+  GIFSKI_GIF,
+  /** internal error related to multithreading */
+  GIFSKI_THREAD_LOST,
+  /** I/O error: file or directory not found */
+  GIFSKI_NOT_FOUND,
+  /** I/O error: permission denied */
+  GIFSKI_PERMISSION_DENIED,
+  /** I/O error: file already exists */
+  GIFSKI_ALREADY_EXISTS,
+  /** misc I/O error */
+  GIFSKI_INVALID_INPUT,
+  /** misc I/O error */
+  GIFSKI_TIMED_OUT,
+  /** misc I/O error */
+  GIFSKI_WRITE_ZERO,
+  /** misc I/O error */
+  GIFSKI_INTERRUPTED,
+  /** misc I/O error */
+  GIFSKI_UNEXPECTED_EOF,
+  /** should not happen, file a bug */
+  GIFSKI_OTHER,
+};
+
+typedef enum GifskiError GifskiError;
+
 /*
  * Call to start the process
  *
  * See `gifski_add_frame_png_file` and `gifski_end_adding_frames`
+ *
+ * Returns a handle for the other functions, or `NULL` on error (if the settings are invalid).
  */
 gifski *gifski_new(const GifskiSettings *settings);
 
@@ -44,8 +80,10 @@ gifski *gifski_new(const GifskiSettings *settings);
  * Delay is in 1/100ths of a second
  *
  * Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
- */
-bool gifski_add_frame_png_file(gifski *handle,
+ *
+ * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
+*/
+GifskiError gifski_add_frame_png_file(gifski *handle,
                                uint32_t index,
                                const char *file_path,
                                uint16_t delay);
@@ -56,8 +94,10 @@ bool gifski_add_frame_png_file(gifski *handle,
  * Delay is in 1/100ths of a second
  *
  * Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
+ *
+ * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
-bool gifski_add_frame_rgba(gifski *handle,
+GifskiError gifski_add_frame_rgba(gifski *handle,
                            uint32_t index,
                            uint32_t width,
                            uint32_t height,
@@ -66,13 +106,17 @@ bool gifski_add_frame_rgba(gifski *handle,
 
 /*
  * You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
+ *
+ * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
-bool gifski_end_adding_frames(gifski *handle);
+GifskiError gifski_end_adding_frames(gifski *handle);
 
 /*
  * Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
+ *
+ * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
-bool gifski_write(gifski *handle,
+GifskiError gifski_write(gifski *handle,
                   const char *destination);
 
 /*
