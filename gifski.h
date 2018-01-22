@@ -18,11 +18,11 @@ typedef struct {
    */
   uint32_t height;
   /*
-   * 1-100. Recommended to set to 100.
+   * 1-100, but useful range is 50-100. Recommended to set to 100.
    */
   uint8_t quality;
   /*
-   * If true, looping is disabled
+   * If true, looping is disabled. Recommended false (looping on).
    */
   bool once;
   /*

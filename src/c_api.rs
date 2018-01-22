@@ -28,11 +28,11 @@ pub struct GifskiSettings {
     pub width: u32,
     /// Resize to max this height if width is non-0. Note that aspect ratio is not preserved.
     pub height: u32,
-    /// 1-100. Recommended to set to 100.
+    /// 1-100, but useful range is 50-100. Recommended to set to 100.
     pub quality: u8,
-    /// If true, looping is disabled
+    /// If true, looping is disabled. Recommended false (looping on).
     pub once: bool,
-    /// Lower quality, but faster encode
+    /// Lower quality, but faster encode.
     pub fast: bool,
 }
 
