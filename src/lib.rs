@@ -203,7 +203,9 @@ impl Writer {
 
         for f in write_queue_iter {
             let GIFFrame {ref pal, ref image, delay, dispose} = *f;
-            reporter.increase();
+            if !reporter.increase() {
+                Err(ErrorKind::Aborted)?
+            }
 
             let mut transparent_index = None;
             let mut pal_rgb = Vec::with_capacity(3 * pal.len());

@@ -59,6 +59,8 @@ enum GifskiError {
   GIFSKI_INTERRUPTED,
   /** misc I/O error */
   GIFSKI_UNEXPECTED_EOF,
+  /** progress callback returned 0, writing aborted */
+  ABORTED,
   /** should not happen, file a bug */
   GIFSKI_OTHER,
 };
@@ -111,13 +113,22 @@ GifskiError gifski_add_frame_rgba(gifski *handle,
  */
 GifskiError gifski_end_adding_frames(gifski *handle);
 
+/* Get a callback for frame processed, and abort processing if desired.
+ *
+ * The callback is called once per frame with `NULL`, and then once with non-null message on end.
+ *
+ * The callback must return `1` to continue processing, or `0` to abort.
+ *
+ * Must be called before `gifski_write()`
+ */
+void gifski_set_progress_callback(gifski *handle, int (cb)(const char *));
+
 /*
  * Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
-GifskiError gifski_write(gifski *handle,
-                  const char *destination);
+GifskiError gifski_write(gifski *handle, const char *destination);
 
 /*
  * Call to free all memory

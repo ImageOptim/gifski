@@ -7,7 +7,8 @@ error_chain! {
         Error, ErrorKind, ResultExt, CatResult;
     }
     errors {
-        ThreadSend
+        ThreadSend {}
+        Aborted {}
     }
     foreign_links {
         Io(io::Error);

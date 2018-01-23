@@ -13,7 +13,7 @@
 //! ```
 
 use super::*;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::ptr;
 use std::slice;
 use std::fs::File;
@@ -40,6 +40,7 @@ pub struct GifskiSettings {
 pub struct GifskiHandle {
     writer: Option<Writer>,
     collector: Option<Collector>,
+    progress: Option<ProgressCallback>,
 }
 
 #[repr(C)]
@@ -60,6 +61,7 @@ pub enum GifskiError {
     WRITE_ZERO,
     INTERRUPTED,
     UNEXPECTED_EOF,
+    ABORTED,
     OTHER,
 }
 
@@ -110,6 +112,7 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
         Box::into_raw(Box::new(GifskiHandle {
             writer: Some(writer),
             collector: Some(collector),
+            progress: None,
         }))
     } else {
         ptr::null_mut()
@@ -170,6 +173,19 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
     }
 }
 
+/// Get a callback for frame processed, and abort processing if desired.
+///
+/// The callback is called once per frame with `NULL`, and then once with non-null message on end.
+///
+/// The callback must return `1` to continue processing, or `0` to abort.
+///
+/// Must be called before `gifski_write()`
+#[no_mangle]
+pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: unsafe fn(*const i8) -> c_int) {
+    let g = unsafe {handle.as_mut().unwrap()};
+    g.progress = Some(ProgressCallback::new(cb));
+}
+
 /// Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
 #[no_mangle]
 pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_char) -> GifskiError {
@@ -182,7 +198,11 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
     });
     if let Ok(file) = File::create(path) {
         if let Some(writer) = g.writer.take() {
-            return writer.write(file, &mut NoProgress {}).into();
+            let mut progress: &mut ProgressReporter = &mut NoProgress {};
+            if let Some(cb) = g.progress.as_mut() {
+                progress = cb;
+            }
+            return writer.write(file, progress).into();
         }
     }
     GifskiError::INVALID_STATE
@@ -208,6 +228,10 @@ fn c() {
     });
     assert!(!g.is_null());
     assert_eq!(GifskiError::NULL_ARG, gifski_add_frame_rgba(g, 0, 1, 1, ptr::null(), 5));
+    fn cb(_m: *const i8) -> c_int {
+        1
+    }
+    gifski_set_progress_callback(g, cb);
     assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0,0,0,0), 5));
     assert_eq!(GifskiError::OK, gifski_end_adding_frames(g));
     assert_eq!(GifskiError::INVALID_STATE, gifski_end_adding_frames(g));
