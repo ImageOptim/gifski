@@ -82,7 +82,7 @@ fn bin_main() -> BinResult<()> {
                             .help("Do not loop the GIF"))
                         .arg(Arg::with_name("quiet")
                             .long("quiet")
-                            .help("Don not show a progress bar"))
+                            .help("Do not show a progress bar"))
                         .arg(Arg::with_name("FRAMES")
                             .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
