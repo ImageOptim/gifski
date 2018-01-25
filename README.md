@@ -46,7 +46,11 @@ AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use 
 
 ## Building
 
-Enable OpenMP with `--features=openmp` (supported on macOS and Linux with GCC). It makes encoding more than twice as fast.
+1. [Install Rust](https://www.rust-lang.org/en-US/install.html)
+2. Clone the repository: `git clone https://github.com/ImageOptim/gifski`
+3. In the cloned directory, run: `cargo build --release`
+
+Enable OpenMP by adding `--features=openmp` to Cargo build flags (supported on macOS and Linux with GCC). It makes encoding more than twice as fast.
 
 ### With built-in video support
 
