@@ -5,6 +5,29 @@
 struct gifski;
 typedef struct gifski gifski;
 
+
+/**
+  Please note that it is impossible to use this API in a single-threaded program.
+  You must have at least two threads -- one for adding the frames, and another for writing.
+
+ ```c
+ gifski *g = gifski_new(&settings);
+
+ // Call on decoder thread:
+ gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+ gifski_end_adding_frames(g);
+
+ // Call on encoder thread:
+ gifski_write(g, "file.gif");
+ gifski_drop(g);
+ ```
+
+ It's safe to call `gifski_drop()` after `gifski_write()`, because `gifski_write()` blocks until `gifski_end_adding_frames()` is called.
+
+ It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
+ because it blocks and waits until previous frames are written.
+*/
+
 /*
  * Settings for creating a new encoder instance. See `gifski_new`
  */
@@ -79,9 +102,13 @@ gifski *gifski_new(const GifskiSettings *settings);
 /*
  * File path must be valid UTF-8. This function is asynchronous.
  *
- * Delay is in 1/100ths of a second
+ * Delay is in 1/100ths of a second.
  *
- * Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
+ * While you add frames, `gifski_write()` should be running already on another thread.
+ * If `gifski_write()` is not running already, it may make `gifski_add_frame_*` block and wait for
+ * write to start.
+ *
+ * Call `gifski_end_adding_frames()` after you add all frames.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 */
@@ -93,9 +120,13 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
 /*
  * Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
  *
- * Delay is in 1/100ths of a second
+ * Delay is in 1/100ths of a second.
  *
- * Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
+ * While you add frames, `gifski_write()` should be running already on another thread.
+ * If `gifski_write()` is not running already, it may make `gifski_add_frame_*` block and wait for
+ * write to start.
+ *
+ * Call `gifski_end_adding_frames()` after you add all frames.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
@@ -124,7 +155,9 @@ GifskiError gifski_end_adding_frames(gifski *handle);
 void gifski_set_progress_callback(gifski *handle, int (cb)(const char *));
 
 /*
- * Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
+ * Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
+ *
+ * This call will block until the entire file is written. You will need to add frames on another thread.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */

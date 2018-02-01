@@ -1,16 +1,24 @@
 //! How to use from C
 //!
-//! ```c
-//! gifski *g = gifski_new(&settings);
+//! Please note that it is impossible to use this API in a single-threaded program.
+//!   You must have at least two threads -- one for adding the frames, and another for writing.
 //!
-//! // Call on decoder thread:
-//! gifski_add_frame_rgba(g, i, width, height, buffer, 5);
-//! gifski_end_adding_frames(g);
+//!  ```c
+//!  gifski *g = gifski_new(&settings);
 //!
-//! // Call on encoder thread:
-//! gifski_write(g, "file.gif");
-//! gifski_drop(g);
-//! ```
+//!  // Call on decoder thread:
+//!  gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+//!  gifski_end_adding_frames(g);
+//!
+//!  // Call on encoder thread:
+//!  gifski_write(g, "file.gif");
+//!  gifski_drop(g);
+//!  ```
+//!
+//!  It's safe to call `gifski_drop()` after `gifski_write()`, because `gifski_write()` blocks until `gifski_end_adding_frames()` is called.
+//!
+//!  It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
+//!  because it blocks and waits until previous frames are written.
 
 use super::*;
 use std::os::raw::{c_char, c_int};
@@ -121,9 +129,15 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
 
 /// File path must be valid UTF-8. This function is asynchronous.
 ///
-/// Delay is in 1/100ths of a second
+/// Delay is in 1/100ths of a second.
 ///
-/// Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
+/// While you add frames, `gifski_write()` should be running already on another thread.
+/// If `gifski_write()` is not running already, it may make `gifski_add_frame_*` block and wait for
+/// write to start.
+///
+/// Call `gifski_end_adding_frames()` after you add all frames.
+///
+/// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u32, file_path: *const c_char, delay: u16) -> GifskiError {
     if file_path.is_null() {
@@ -142,11 +156,15 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
 
 /// Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
 ///
-/// Delay is in 1/100ths of a second
+/// Delay is in 1/100ths of a second.
 ///
-/// The call may block and wait until the encoder thread needs more frames.
+/// While you add frames, `gifski_write()` should be running already on another thread.
+/// If `gifski_write()` is not running already, it may make `gifski_add_frame_*` block and wait for
+/// write to start.
 ///
-/// Call `gifski_end_adding_frames()` after you add all frames. See also `gifski_write()`
+/// Call `gifski_end_adding_frames()` after you add all frames.
+///
+/// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> GifskiError {
     if handle.is_null() || pixels.is_null() {
@@ -186,7 +204,11 @@ pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: un
     g.progress = Some(ProgressCallback::new(cb));
 }
 
-/// Write frames to `destination` and keep waiting for more frames until `gifski_end_adding_frames` is called.
+/// Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
+///
+/// This call will block until the entire file is written. You will need to add frames on another thread.
+///
+/// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_char) -> GifskiError {
     if destination.is_null() {
