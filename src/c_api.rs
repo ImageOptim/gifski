@@ -21,7 +21,7 @@
 //!  because it blocks and waits until previous frames are written.
 
 use super::*;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::slice;
 use std::fs::File;
@@ -194,14 +194,16 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
 /// Get a callback for frame processed, and abort processing if desired.
 ///
 /// The callback is called once per frame.
+/// It gets arbitrary pointer (`user_data`) as an argument. `user_data` can be `NULL`.
+/// The callback must be thread-safe (it will be called from another thread).
 ///
 /// The callback must return `1` to continue processing, or `0` to abort.
 ///
 /// Must be called before `gifski_write()` to take effect.
 #[no_mangle]
-pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: unsafe fn() -> c_int) {
+pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: unsafe fn(*mut c_void) -> c_int, user_data: *mut c_void) {
     let g = unsafe {handle.as_mut().unwrap()};
-    g.progress = Some(ProgressCallback::new(cb));
+    g.progress = Some(ProgressCallback::new(cb, user_data));
 }
 
 /// Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
@@ -250,10 +252,10 @@ fn c() {
     });
     assert!(!g.is_null());
     assert_eq!(GifskiError::NULL_ARG, gifski_add_frame_rgba(g, 0, 1, 1, ptr::null(), 5));
-    fn cb() -> c_int {
+    fn cb(_: *mut c_void) -> c_int {
         1
     }
-    gifski_set_progress_callback(g, cb);
+    gifski_set_progress_callback(g, cb, ptr::null_mut());
     assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0,0,0,0), 5));
     assert_eq!(GifskiError::OK, gifski_end_adding_frames(g));
     assert_eq!(GifskiError::INVALID_STATE, gifski_end_adding_frames(g));

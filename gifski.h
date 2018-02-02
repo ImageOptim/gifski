@@ -147,12 +147,14 @@ GifskiError gifski_end_adding_frames(gifski *handle);
 /* Get a callback for frame processed, and abort processing if desired.
  *
  * The callback is called once per frame.
+ * It gets arbitrary pointer (`user_data`) as an argument. `user_data` can be `NULL`.
+ * The callback must be thread-safe (it will be called from another thread).
  *
  * The callback must return `1` to continue processing, or `0` to abort.
  *
  * Must be called before `gifski_write()` to take effect.
  */
-void gifski_set_progress_callback(gifski *handle, int (cb)(const char *));
+void gifski_set_progress_callback(gifski *handle, int (cb)(void *), void *user_data);
 
 /*
  * Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
