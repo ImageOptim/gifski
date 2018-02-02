@@ -1,7 +1,5 @@
 use std::io::Stdout;
-use std::ptr;
 use std::os::raw::c_int;
-use std::ffi::CString;
 pub use pbr::ProgressBar;
 
 /// A trait that is used to report progress to some consumer.
@@ -18,11 +16,11 @@ pub struct NoProgress {}
 
 /// For C
 pub struct ProgressCallback {
-    callback: unsafe fn(*const i8) -> c_int,
+    callback: unsafe fn() -> c_int,
 }
 
 impl ProgressCallback {
-    pub fn new(callback: unsafe fn(*const i8) -> c_int) -> Self {
+    pub fn new(callback: unsafe fn() -> c_int) -> Self {
         Self {
             callback,
         }
