@@ -146,11 +146,11 @@ GifskiError gifski_end_adding_frames(gifski *handle);
 
 /* Get a callback for frame processed, and abort processing if desired.
  *
- * The callback is called once per frame with `NULL`, and then once with non-null message on end.
+ * The callback is called once per frame.
  *
  * The callback must return `1` to continue processing, or `0` to abort.
  *
- * Must be called before `gifski_write()`
+ * Must be called before `gifski_write()` to take effect.
  */
 void gifski_set_progress_callback(gifski *handle, int (cb)(const char *));
 

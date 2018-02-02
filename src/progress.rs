@@ -37,15 +37,10 @@ impl ProgressReporter for NoProgress {
 impl ProgressReporter for ProgressCallback {
     fn increase(&mut self)-> bool {
         unsafe {
-            (self.callback)(ptr::null()) == 1
+            (self.callback)() == 1
         }
     }
-    fn done(&mut self, msg: &str) {
-        let cmsg = CString::new(msg).unwrap();
-        unsafe {
-            (self.callback)(cmsg.as_ptr());
-        }
-    }
+    fn done(&mut self, _msg: &str) {}
 }
 
 /// Implement the progress reporter trait for a progress bar,
