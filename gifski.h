@@ -6,7 +6,7 @@ struct gifski;
 typedef struct gifski gifski;
 
 
-/**
+/*
   Please note that it is impossible to use this API in a single-threaded program.
   You must have at least two threads -- one for adding the frames, and another for writing.
 
@@ -28,27 +28,27 @@ typedef struct gifski gifski;
  because it blocks and waits until previous frames are written.
 */
 
-/*
+/**
  * Settings for creating a new encoder instance. See `gifski_new`
  */
 typedef struct {
-  /*
+  /**
    * Resize to max this width if non-0
    */
   uint32_t width;
-  /*
+  /**
    * Resize to max this height if width is non-0. Note that aspect ratio is not preserved.
    */
   uint32_t height;
-  /*
+  /**
    * 1-100, but useful range is 50-100. Recommended to set to 100.
    */
   uint8_t quality;
-  /*
+  /**
    * If true, looping is disabled. Recommended false (looping on).
    */
   bool once;
-  /*
+  /**
    * Lower quality, but faster encode
    */
   bool fast;
@@ -90,7 +90,7 @@ enum GifskiError {
 
 typedef enum GifskiError GifskiError;
 
-/*
+/**
  * Call to start the process
  *
  * See `gifski_add_frame_png_file` and `gifski_end_adding_frames`
@@ -99,7 +99,7 @@ typedef enum GifskiError GifskiError;
  */
 gifski *gifski_new(const GifskiSettings *settings);
 
-/*
+/**
  * File path must be valid UTF-8. This function is asynchronous.
  *
  * Delay is in 1/100ths of a second.
@@ -117,7 +117,7 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
                                const char *file_path,
                                uint16_t delay);
 
-/*
+/**
  * Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
  *
  * Delay is in 1/100ths of a second.
@@ -172,7 +172,7 @@ GifskiError gifski_end_adding_frames(gifski *handle);
  */
 void gifski_set_progress_callback(gifski *handle, int (cb)(void *), void *user_data);
 
-/*
+/**
  * Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
  *
  * This call will block until the entire file is written. You will need to add frames on another thread.
@@ -181,7 +181,7 @@ void gifski_set_progress_callback(gifski *handle, int (cb)(void *), void *user_d
  */
 GifskiError gifski_write(gifski *handle, const char *destination);
 
-/*
+/**
  * Call to free all memory
  */
 void gifski_drop(gifski *g);
