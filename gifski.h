@@ -137,7 +137,23 @@ GifskiError gifski_add_frame_rgba(gifski *handle,
                            const unsigned char *pixels,
                            uint16_t delay);
 
-/*
+/** Same as `gifski_add_frame_rgba`, except it expects components in ARGB order */
+GifskiError gifski_add_frame_argb(gifski *handle,
+                           uint32_t index,
+                           uint32_t width,
+                           uint32_t height,
+                           const unsigned char *pixels,
+                           uint16_t delay);
+
+/** Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel) */
+GifskiError gifski_add_frame_rgb(gifski *handle,
+                           uint32_t index,
+                           uint32_t width,
+                           uint32_t height,
+                           const unsigned char *pixels,
+                           uint16_t delay);
+
+/**
  * You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.

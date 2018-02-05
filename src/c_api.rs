@@ -44,6 +44,15 @@ pub struct GifskiSettings {
     pub fast: bool,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ARGB8 {
+    pub a: u8,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
 /// Opaque handle used in methods
 pub struct GifskiHandle {
     writer: Option<Writer>,
@@ -167,18 +176,54 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> GifskiError {
-    if handle.is_null() || pixels.is_null() {
+    if pixels.is_null() {
+        return GifskiError::NULL_ARG;
+    }
+    let pixels = unsafe {
+        slice::from_raw_parts(pixels, width as usize * height as usize)
+    };
+    add_frame_rgba(handle, index, ImgVec::new(pixels.to_owned(), width as usize, height as usize), delay)
+}
+
+fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, delay: u16) -> GifskiError {
+    if handle.is_null() {
         return GifskiError::NULL_ARG;
     }
     let g = unsafe {handle.as_mut().unwrap()};
     if let Some(ref mut c) = g.collector {
-        let px = unsafe {
-            slice::from_raw_parts(pixels, width as usize * height as usize)
-        };
-        c.add_frame_rgba(index as usize, ImgVec::new(px.to_owned(), width as usize, height as usize), delay).into()
+        c.add_frame_rgba(index as usize, frame, delay).into()
     } else {
         GifskiError::INVALID_STATE
     }
+}
+
+/// Same as `gifski_add_frame_rgba`, except it expects components in ARGB order
+#[no_mangle]
+pub extern "C" fn gifski_add_frame_argb(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const ARGB8, delay: u16) -> GifskiError {
+    if pixels.is_null() {
+        return GifskiError::NULL_ARG;
+    }
+    let pixels = unsafe {
+        slice::from_raw_parts(pixels, width as usize * height as usize)
+    };
+    add_frame_rgba(handle, index, ImgVec::new(pixels.iter().map(|p| RGBA8 {
+        r: p.r,
+        g: p.g,
+        b: p.b,
+        a: p.a,
+    }).collect(), width as usize, height as usize), delay)
+}
+
+/// Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel)
+#[no_mangle]
+pub extern "C" fn gifski_add_frame_rgb(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGB8, delay: u16) -> GifskiError {
+    if pixels.is_null() {
+        return GifskiError::NULL_ARG;
+    }
+    let pixels = unsafe {
+        slice::from_raw_parts(pixels, width as usize * height as usize)
+    };
+    add_frame_rgba(handle, index, ImgVec::new(pixels.iter().map(|&p| p.into()).collect(), width as usize, height as usize), delay)
 }
 
 /// You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
@@ -257,6 +302,7 @@ fn c() {
     }
     gifski_set_progress_callback(g, cb, ptr::null_mut());
     assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0,0,0,0), 5));
+    assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 1, 1, 1, &RGB::new(0,0,0), 5));
     assert_eq!(GifskiError::OK, gifski_end_adding_frames(g));
     assert_eq!(GifskiError::INVALID_STATE, gifski_end_adding_frames(g));
     gifski_drop(g);
