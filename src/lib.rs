@@ -46,7 +46,7 @@ use std::sync::Arc;
 
 use std::thread;
 
-type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
+type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
 
 #[derive(Copy, Clone, Default)]
 pub struct Settings {
@@ -125,20 +125,27 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
 }
 
 impl Collector {
-    /// Frame index starts at 0. Set each frame only once, but you can set them in any order.
-    /// Frame delay is in GIF units (1/100s).
-    pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, delay: u16) -> CatResult<()> {
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height), delay)))
+    /// Frame index starts at 0.
+    ///
+    /// Set each frame (index) only once, but you can set them in any order.
+    ///
+    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
+    pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height), presentation_timestamp)))
     }
 
-    /// Read and decode a PNG file from disk. Frame index starts at 0. Frame delay is in GIF units (1/100s)
-    pub fn add_frame_png_file(&mut self, frame_index: usize, path: PathBuf, delay: u16) -> CatResult<()> {
+    /// Read and decode a PNG file from disk.
+    ///
+    /// Frame index starts at 0.
+    ///
+    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
+    pub fn add_frame_png_file(&mut self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
         let width = self.width;
         let height = self.height;
         let image = lodepng::decode32_file(&path)
             .chain_err(|| format!("Can't load {}", path.display()))?;
 
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), delay)))
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), presentation_timestamp)))
     }
 
     fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
@@ -269,29 +276,34 @@ impl Writer {
         let mut decode_iter = queue_iter.enumerate().map(|(i, tmp)| tmp.map(|(image, delay)| (i, image, delay)));
 
         let mut screen = None;
-        let mut curr_frame = if let Some(a) = decode_iter.next() {
-            Some(a?)
-        } else {
-            Err("Found no usable frames to encode")?
-        };
-        let mut importance_map = vec![255u8; curr_frame.as_ref().unwrap().1.buf().len()];
-        let mut next_frame = if let Some(a) = decode_iter.next() {
-            Some(a?)
-        } else {
-            None
+        let mut curr_frame = decode_iter.next().transpose()?;
+        let mut next_frame = decode_iter.next().transpose()?;
+
+        let mut importance_map = match &curr_frame {
+            Some(curr_frame) => vec![255u8; curr_frame.1.buf().len()],
+            None => Err("Found no usable frames to encode")?,
         };
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
-        while let Some((i, image, delay)) = curr_frame.take() {
-            curr_frame = next_frame.take();
-            next_frame = if let Some(a) = decode_iter.next() {
-                Some(a?)
+        let mut previous_frame_delay = 2;
+        let mut pts_in_delay_units = 0u64;
+
+        while let Some((i, image, _)) = curr_frame.take() {
+            // To convert PTS to delay it's necessary to know when the next frame is to be displayed
+            let delay = if let Some((_,_, next_pts)) = next_frame {
+                let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
+                if next_pts_in_delay_units > pts_in_delay_units {
+                    (next_pts_in_delay_units - pts_in_delay_units).min(100) as u16
+                } else {
+                    1
+                }
             } else {
-                None
+                previous_frame_delay // for the last frame just assume constant framerate
             };
+            pts_in_delay_units += delay as u64;
+            previous_frame_delay = delay;
 
             let mut dispose = gif::DisposalMethod::Keep;
-
             if let Some((_, ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
                     Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
@@ -310,10 +322,7 @@ impl Writer {
                 }));
             };
 
-            if screen.is_none() {
-                screen = Some(gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
-            }
-            let screen = screen.as_mut().unwrap();
+            let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
 
             let has_prev_frame = i > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
             if has_prev_frame {
@@ -356,6 +365,9 @@ impl Writer {
 
             write_queue.push(i, frame.clone())?;
             screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
+
+            curr_frame = next_frame.take();
+            next_frame = decode_iter.next().transpose()?;
             previous_frame_dispose = dispose;
         }
 
