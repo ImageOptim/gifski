@@ -25,6 +25,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::mem;
 use std::slice;
+use std::fs;
 use std::fs::File;
 use std::ffi::CStr;
 use std::path::{PathBuf, Path};
@@ -286,7 +287,14 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
             if let Some(cb) = g.progress.as_mut() {
                 progress = cb;
             }
-            return writer.write(file, progress).into();
+            match writer.write(file, progress).into() {
+                res @ GifskiError::OK |
+                res @ GifskiError::ALREADY_EXISTS => res,
+                err => {
+                    let _ = fs::remove_file(path); // clean up unfinished file
+                    err
+                },
+            };
         }
     }
     GifskiError::INVALID_STATE
