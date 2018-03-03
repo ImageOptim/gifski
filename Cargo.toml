@@ -12,9 +12,6 @@ readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
 version = "0.8.2"
 
-[package.metadata.deb]
-features = ["openmp"]
-
 [[bin]]
 doctest = false
 name = "gifski"
