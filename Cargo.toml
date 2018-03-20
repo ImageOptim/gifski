@@ -38,7 +38,8 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 
 [features]
 default-features = []
-openmp = ["imagequant/openmp-static"]
+openmp = ["imagequant/openmp"]
+openmp-static = ["imagequant/openmp-static"]
 video = ["ffmpeg"]
 
 [lib]
