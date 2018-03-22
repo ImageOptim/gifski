@@ -6,7 +6,7 @@ Highest-quality GIF encoder based on [pngquant](https://pngquant.org).
 
 ![(CC) Blender Foundation | gooseberry.blender.org](https://gif.ski/demo.gif)
 
-It's a CLI tool, but it can also be compiled [as a library](https://docs.rs/gifski) for seamelss use in other apps.
+It's a CLI tool, but it can also be compiled [as a library](https://docs.rs/gifski) for seamless use in other apps.
 
 ## Download and install
 
