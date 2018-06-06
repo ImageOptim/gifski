@@ -26,6 +26,7 @@ use std::ptr;
 use std::mem;
 use std::slice;
 use std::fs;
+use std::io;
 use std::fs::File;
 use std::ffi::CStr;
 use std::path::{PathBuf, Path};
@@ -87,26 +88,32 @@ pub enum GifskiError {
 impl From<CatResult<()>> for GifskiError {
     fn from(res: CatResult<()>) -> Self {
         use error::ErrorKind::*;
-        use std::io::ErrorKind as EK;
         match res {
             Ok(_) => GifskiError::OK,
             Err(err) => match *err.kind() {
                 Quant(_) => GifskiError::QUANT,
                 Pal(_) => GifskiError::GIF,
                 ThreadSend => GifskiError::THREAD_LOST,
-                Io(ref err) => match err.kind() {
-                    EK::NotFound => GifskiError::NOT_FOUND,
-                    EK::PermissionDenied => GifskiError::PERMISSION_DENIED,
-                    EK::AlreadyExists => GifskiError::ALREADY_EXISTS,
-                    EK::InvalidInput | EK::InvalidData => GifskiError::INVALID_INPUT,
-                    EK::TimedOut => GifskiError::TIMED_OUT,
-                    EK::WriteZero => GifskiError::WRITE_ZERO,
-                    EK::Interrupted => GifskiError::INTERRUPTED,
-                    EK::UnexpectedEof => GifskiError::UNEXPECTED_EOF,
-                    _ => GifskiError::OTHER,
-                },
+                Io(ref err) => err.kind().into(),
                 _ => GifskiError::OTHER,
             },
+        }
+    }
+}
+
+impl From<io::ErrorKind> for GifskiError {
+    fn from(res: io::ErrorKind) -> Self {
+        use std::io::ErrorKind as EK;
+        match res {
+            EK::NotFound => GifskiError::NOT_FOUND,
+            EK::PermissionDenied => GifskiError::PERMISSION_DENIED,
+            EK::AlreadyExists => GifskiError::ALREADY_EXISTS,
+            EK::InvalidInput | EK::InvalidData => GifskiError::INVALID_INPUT,
+            EK::TimedOut => GifskiError::TIMED_OUT,
+            EK::WriteZero => GifskiError::WRITE_ZERO,
+            EK::Interrupted => GifskiError::INTERRUPTED,
+            EK::UnexpectedEof => GifskiError::UNEXPECTED_EOF,
+            _ => GifskiError::OTHER,
         }
     }
 }
