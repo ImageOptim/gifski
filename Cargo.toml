@@ -30,7 +30,7 @@ pbr = "1.0.0"
 rayon = "1.0.0"
 resize = "0.3.0"
 rgb = "0.8.9"
-wild = "1.0.1"
+wild = "1.1.0"
 
 [dependencies.ffmpeg]
 optional = true
