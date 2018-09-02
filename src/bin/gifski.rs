@@ -19,6 +19,7 @@ extern crate imgref;
 extern crate rgb;
 extern crate rayon;
 extern crate wild;
+extern crate natord;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
@@ -91,6 +92,9 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::with_name("once")
                             .long("once")
                             .help("Do not loop the GIF"))
+                        .arg(Arg::with_name("nosort")
+                            .long("nosort")
+                            .help("Use files exactly in the order given, rather than sorted"))
                         .arg(Arg::with_name("quiet")
                             .long("quiet")
                             .help("Do not show a progress bar"))
@@ -102,7 +106,12 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .get_matches_from(wild::args());
 
-    let frames: Vec<_> = matches.values_of_os("FRAMES").ok_or("Missing files")?.map(|p| PathBuf::from(p)).collect();
+    let mut frames: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
+    if !matches.is_present("nosort") {
+        frames.sort_by(|a,b| natord::compare(a,b));
+    }
+    let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
+
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
         width: parse_opt(matches.value_of("width")).chain_err(|| "Invalid width")?,

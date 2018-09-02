@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "0.8.4"
+version = "0.8.5"
 autobins = false
 
 [[bin]]
@@ -31,6 +31,7 @@ rayon = "1.0.0"
 resize = "0.3.0"
 rgb = "0.8.9"
 wild = "1.1.0"
+natord = "1.0.9"
 
 [dependencies.ffmpeg]
 optional = true
