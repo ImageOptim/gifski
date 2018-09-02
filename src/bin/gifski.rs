@@ -1,4 +1,3 @@
-#![cfg_attr(feature = "malloc", feature(alloc_system, global_allocator, allocator_api))]
 
 #[cfg(feature = "malloc")]
 extern crate alloc_system;
@@ -104,7 +103,7 @@ fn bin_main() -> BinResult<()> {
                             .empty_values(false)
                             .use_delimiter(false)
                             .required(true))
-                        .get_matches_from(wild::args());
+                        .get_matches_from(wild::args_os());
 
     let mut frames: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
     if !matches.is_present("nosort") {

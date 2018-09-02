@@ -29,8 +29,8 @@ lodepng = "2.1.5"
 pbr = "1.0.0"
 rayon = "1.0.0"
 resize = "0.3.0"
-rgb = "0.8.9"
-wild = "1.1.0"
+rgb = "0.8.10"
+wild = "2.0"
 natord = "1.0.9"
 
 [dependencies.ffmpeg]
