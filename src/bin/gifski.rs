@@ -1,8 +1,6 @@
 
 #[cfg(feature = "malloc")]
-extern crate alloc_system;
-#[cfg(feature = "malloc")]
-use alloc_system::System;
+use std::alloc::System;
 
 #[cfg(feature = "malloc")]
 #[cfg_attr(feature = "malloc", global_allocator)]
