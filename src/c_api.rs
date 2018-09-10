@@ -29,6 +29,7 @@ use std::mem;
 use std::slice;
 use std::fs;
 use std::io;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::fs::File;
 use std::ffi::CStr;
@@ -125,7 +126,7 @@ impl From<io::ErrorKind> for GifskiError {
 ///
 /// See `gifski_add_frame_png_file` and `gifski_end_adding_frames`
 #[no_mangle]
-pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHandle {
+pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const GifskiHandle {
     let settings = unsafe {if let Some(s) = settings.as_ref() {s} else {
         return ptr::null_mut();
     }};
@@ -138,7 +139,7 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
     };
 
     if let Ok((collector, writer)) = new(s) {
-        Box::into_raw(Box::new(GifskiHandle {
+        Arc::into_raw(Arc::new(GifskiHandle {
             writer: Mutex::new(Some(writer)),
             collector: Mutex::new(Some(collector)),
             progress: Mutex::new(None),
@@ -160,11 +161,11 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u32, file_path: *const c_char, delay: u16) -> GifskiError {
+pub extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, index: u32, file_path: *const c_char, delay: u16) -> GifskiError {
     if file_path.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = match unsafe { handle.as_mut() } {
+    let g = match unsafe { handle.as_ref() } {
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
@@ -193,7 +194,7 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> GifskiError {
+pub extern "C" fn gifski_add_frame_rgba(handle: *const GifskiHandle, index: u32, width: u32, height: u32, pixels: *const RGBA8, delay: u16) -> GifskiError {
     if pixels.is_null() {
         return GifskiError::NULL_ARG;
     }
@@ -203,8 +204,8 @@ pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, w
     add_frame_rgba(handle, index, ImgVec::new(pixels.to_owned(), width as usize, height as usize), delay)
 }
 
-fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, delay: u16) -> GifskiError {
-    let g = match unsafe { handle.as_mut() } {
+fn add_frame_rgba(handle: *const GifskiHandle, index: u32, frame: ImgVec<RGBA8>, delay: u16) -> GifskiError {
+    let g = match unsafe { handle.as_ref() } {
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
@@ -220,7 +221,7 @@ fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, d
 ///
 /// Bytes per row must be multiple of 4 and greater or equal width×4.
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_argb(handle: *mut GifskiHandle, index: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const ARGB8, delay: u16) -> GifskiError {
+pub extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, index: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const ARGB8, delay: u16) -> GifskiError {
     if pixels.is_null() {
         return GifskiError::NULL_ARG;
     }
@@ -244,7 +245,7 @@ pub extern "C" fn gifski_add_frame_argb(handle: *mut GifskiHandle, index: u32, w
 ///
 /// Bytes per row must be multiple of 3 and greater or equal width×3.
 #[no_mangle]
-pub extern "C" fn gifski_add_frame_rgb(handle: *mut GifskiHandle, index: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const RGB8, delay: u16) -> GifskiError {
+pub extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, index: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const RGB8, delay: u16) -> GifskiError {
     if pixels.is_null() {
         return GifskiError::NULL_ARG;
     }
@@ -261,8 +262,8 @@ pub extern "C" fn gifski_add_frame_rgb(handle: *mut GifskiHandle, index: u32, wi
 
 /// You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
 #[no_mangle]
-pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiError {
-    let g = match unsafe { handle.as_mut() } {
+pub extern "C" fn gifski_end_adding_frames(handle: *const GifskiHandle) -> GifskiError {
+    let g = match unsafe { handle.as_ref() } {
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
@@ -285,11 +286,10 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
 ///
 /// Must be called before `gifski_write()` to take effect.
 #[no_mangle]
-pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: unsafe fn(*mut c_void) -> c_int, user_data: *mut c_void) {
-    let g = if handle.is_null() {
-        return;
-    } else {
-        unsafe {&mut *handle}
+pub extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandle, cb: unsafe fn(*mut c_void) -> c_int, user_data: *mut c_void) {
+    let g = match unsafe { handle.as_ref() } {
+        Some(g) => g,
+        None => return,
     };
     *g.progress.lock().unwrap() = Some(ProgressCallback::new(cb, user_data));
 }
@@ -300,11 +300,11 @@ pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: un
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
-pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_char) -> GifskiError {
+pub extern "C" fn gifski_write(handle: *const GifskiHandle, destination: *const c_char) -> GifskiError {
     if destination.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = match unsafe { handle.as_mut() } {
+    let g = match unsafe { handle.as_ref() } {
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
@@ -341,10 +341,10 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
 
 /// Call to free all memory
 #[no_mangle]
-pub extern "C" fn gifski_drop(g: *mut GifskiHandle) {
+pub extern "C" fn gifski_drop(g: *const GifskiHandle) {
     if !g.is_null() {
         unsafe {
-            Box::from_raw(g);
+            Arc::from_raw(g);
         }
     }
 }
