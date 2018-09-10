@@ -163,14 +163,15 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
     if file_path.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = if handle.is_null() {
-        return GifskiError::NULL_ARG;
-    } else {
-        unsafe {&mut *handle}
+    let g = match unsafe { handle.as_mut() } {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
     };
-    let path = PathBuf::from(unsafe {
-        CStr::from_ptr(file_path).to_str().unwrap()
-    });
+    let path = if let Ok(s) = unsafe { CStr::from_ptr(file_path).to_str() } {
+        PathBuf::from(s)
+    } else {
+        return GifskiError::INVALID_INPUT;
+    };
     if let Some(ref mut c) = g.collector {
         c.add_frame_png_file(index as usize, path, delay).into()
     } else {
@@ -202,10 +203,9 @@ pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, w
 }
 
 fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, delay: u16) -> GifskiError {
-    let g = if handle.is_null() {
-        return GifskiError::NULL_ARG;
-    } else {
-        unsafe {&mut *handle}
+    let g = match unsafe { handle.as_mut() } {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
     };
     if let Some(ref mut c) = g.collector {
         c.add_frame_rgba(index as usize, frame, delay).into()
@@ -261,7 +261,10 @@ pub extern "C" fn gifski_add_frame_rgb(handle: *mut GifskiHandle, index: u32, wi
 /// You must call it at some point (after all frames are set), otherwise `gifski_write()` will never end!
 #[no_mangle]
 pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiError {
-    let g = unsafe {handle.as_mut().unwrap()};
+    let g = match unsafe { handle.as_mut() } {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
+    };
     match g.collector.take() {
         Some(_) => GifskiError::OK,
         None => {
@@ -300,10 +303,9 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
     if destination.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = if handle.is_null() {
-        return GifskiError::NULL_ARG;
-    } else {
-        unsafe {&mut *handle}
+    let g = match unsafe { handle.as_mut() } {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
     };
     let path = if let Ok(s) = unsafe { CStr::from_ptr(destination).to_str() } {
         Path::new(s)
