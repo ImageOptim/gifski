@@ -172,6 +172,7 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
     if let Some(ref mut c) = g.collector {
         c.add_frame_png_file(index as usize, path, delay).into()
     } else {
+        eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
         GifskiError::INVALID_STATE
     }
 }
@@ -207,6 +208,7 @@ fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, d
     if let Some(ref mut c) = g.collector {
         c.add_frame_rgba(index as usize, frame, delay).into()
     } else {
+        eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
         GifskiError::INVALID_STATE
     }
 }
@@ -260,7 +262,10 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
     let g = unsafe {handle.as_mut().unwrap()};
     match g.collector.take() {
         Some(_) => GifskiError::OK,
-        None => GifskiError::INVALID_STATE,
+        None => {
+            eprintln!("gifski_end_adding_frames has been called already");
+            GifskiError::INVALID_STATE
+        },
     }
 }
 
@@ -319,6 +324,7 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
                     },
                 }
             } else {
+                eprintln!("gifski_write has been called already");
                 GifskiError::INVALID_STATE
             }
         },
