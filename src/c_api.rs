@@ -29,6 +29,7 @@ use std::mem;
 use std::slice;
 use std::fs;
 use std::io;
+use std::sync::Mutex;
 use std::fs::File;
 use std::ffi::CStr;
 use std::path::{PathBuf, Path};
@@ -60,9 +61,9 @@ pub struct ARGB8 {
 
 /// Opaque handle used in methods
 pub struct GifskiHandle {
-    writer: Option<Writer>,
-    collector: Option<Collector>,
-    progress: Option<ProgressCallback>,
+    writer: Mutex<Option<Writer>>,
+    collector: Mutex<Option<Collector>>,
+    progress: Mutex<Option<ProgressCallback>>,
 }
 
 #[repr(C)]
@@ -138,9 +139,9 @@ pub extern "C" fn gifski_new(settings: *const GifskiSettings) -> *mut GifskiHand
 
     if let Ok((collector, writer)) = new(s) {
         Box::into_raw(Box::new(GifskiHandle {
-            writer: Some(writer),
-            collector: Some(collector),
-            progress: None,
+            writer: Mutex::new(Some(writer)),
+            collector: Mutex::new(Some(collector)),
+            progress: Mutex::new(None),
         }))
     } else {
         ptr::null_mut()
@@ -172,7 +173,7 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
     } else {
         return GifskiError::INVALID_INPUT;
     };
-    if let Some(ref mut c) = g.collector {
+    if let Some(ref mut c) = *g.collector.lock().unwrap() {
         c.add_frame_png_file(index as usize, path, delay).into()
     } else {
         eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
@@ -207,7 +208,7 @@ fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, d
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    if let Some(ref mut c) = g.collector {
+    if let Some(ref mut c) = *g.collector.lock().unwrap() {
         c.add_frame_rgba(index as usize, frame, delay).into()
     } else {
         eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
@@ -265,7 +266,7 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    match g.collector.take() {
+    match g.collector.lock().unwrap().take() {
         Some(_) => GifskiError::OK,
         None => {
             eprintln!("gifski_end_adding_frames has been called already");
@@ -290,7 +291,7 @@ pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: un
     } else {
         unsafe {&mut *handle}
     };
-    g.progress = Some(ProgressCallback::new(cb, user_data));
+    *g.progress.lock().unwrap() = Some(ProgressCallback::new(cb, user_data));
 }
 
 /// Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
@@ -314,10 +315,12 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
     };
     match File::create(path) {
         Ok(file) => {
-            if let Some(writer) = g.writer.take() {
+            if let Some(writer) = g.writer.lock().unwrap().take() {
+                let mut cb;
                 let mut progress: &mut dyn ProgressReporter = &mut NoProgress {};
-                if let Some(cb) = g.progress.as_mut() {
-                    progress = cb;
+                if let Some(tmp) = g.progress.lock().unwrap().take() {
+                    cb = tmp;
+                    progress = &mut cb;
                 }
                 match writer.write(file, progress).into() {
                     res @ GifskiError::OK |
