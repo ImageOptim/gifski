@@ -161,7 +161,11 @@ pub extern "C" fn gifski_add_frame_png_file(handle: *mut GifskiHandle, index: u3
     if file_path.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = unsafe {handle.as_mut().unwrap()};
+    let g = if handle.is_null() {
+        return GifskiError::NULL_ARG;
+    } else {
+        unsafe {&mut *handle}
+    };
     let path = PathBuf::from(unsafe {
         CStr::from_ptr(file_path).to_str().unwrap()
     });
@@ -195,10 +199,11 @@ pub extern "C" fn gifski_add_frame_rgba(handle: *mut GifskiHandle, index: u32, w
 }
 
 fn add_frame_rgba(handle: *mut GifskiHandle, index: u32, frame: ImgVec<RGBA8>, delay: u16) -> GifskiError {
-    if handle.is_null() {
+    let g = if handle.is_null() {
         return GifskiError::NULL_ARG;
-    }
-    let g = unsafe {handle.as_mut().unwrap()};
+    } else {
+        unsafe {&mut *handle}
+    };
     if let Some(ref mut c) = g.collector {
         c.add_frame_rgba(index as usize, frame, delay).into()
     } else {
@@ -270,7 +275,11 @@ pub extern "C" fn gifski_end_adding_frames(handle: *mut GifskiHandle) -> GifskiE
 /// Must be called before `gifski_write()` to take effect.
 #[no_mangle]
 pub extern "C" fn gifski_set_progress_callback(handle: *mut GifskiHandle, cb: unsafe fn(*mut c_void) -> c_int, user_data: *mut c_void) {
-    let g = unsafe {handle.as_mut().unwrap()};
+    let g = if handle.is_null() {
+        return;
+    } else {
+        unsafe {&mut *handle}
+    };
     g.progress = Some(ProgressCallback::new(cb, user_data));
 }
 
