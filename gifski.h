@@ -126,9 +126,13 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
                                uint16_t delay);
 
 /**
- * Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
+ * `pixels` is an array width×height×4 bytes large.
+ * The array is copied, so you can free/reuse it immediately after this function returns.
  *
- * Delay is in 1/100ths of a second.
+ * `index` is the frame number, counting from 0.
+ * You can add frames in any order (if you need to), and they will be sorted by their index.
+ *
+ * Delay is in 1/100ths of a second. 5 is 20fps.
  *
  * While you add frames, `gifski_write()` should be running already on another thread.
  * If `gifski_write()` is not running already, it may make `gifski_add_frame_*` block and wait for
@@ -147,7 +151,8 @@ GifskiError gifski_add_frame_rgba(gifski *handle,
 
 /** Same as `gifski_add_frame_rgba`, except it expects components in ARGB order.
 
-Bytes per row must be multiple of 4 and greater or equal width×4.
+Bytes per row must be multiple of 4, and greater or equal width×4.
+If the bytes per row value is invalid (e.g. an odd number), frames may look sheared/skewed.
 */
 GifskiError gifski_add_frame_argb(gifski *handle,
                            uint32_t index,
@@ -159,7 +164,8 @@ GifskiError gifski_add_frame_argb(gifski *handle,
 
 /** Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel)
 
-Bytes per row must be multiple of 3 and greater or equal width×3.
+Bytes per row must be multiple of 3, and greater or equal width×3.
+If the bytes per row value is invalid (not multiple of 3), frames may look sheared/skewed.
 */
 GifskiError gifski_add_frame_rgb(gifski *handle,
                            uint32_t index,
@@ -190,6 +196,7 @@ void gifski_set_progress_callback(gifski *handle, int (cb)(void *), void *user_d
 
 /**
  * Start writing to the `destination` and keep waiting for more frames until `gifski_end_adding_frames()` is called.
+ * The file path must be ASCII or valid UTF-8.
  *
  * This call will block until the entire file is written. You will need to add frames on another thread.
  *
