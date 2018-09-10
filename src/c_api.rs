@@ -315,7 +315,7 @@ pub extern "C" fn gifski_write(handle: *mut GifskiHandle, destination: *const c_
     match File::create(path) {
         Ok(file) => {
             if let Some(writer) = g.writer.take() {
-                let mut progress: &mut ProgressReporter = &mut NoProgress {};
+                let mut progress: &mut dyn ProgressReporter = &mut NoProgress {};
                 if let Some(cb) = g.progress.as_mut() {
                     progress = cb;
                 }

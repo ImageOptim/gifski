@@ -138,7 +138,7 @@ fn bin_main() -> BinResult<()> {
         Box::new(png::Lodecoder::new(frames, fps))
     };
 
-    let mut progress: Box<ProgressReporter> = if quiet {
+    let mut progress: Box<dyn ProgressReporter> = if quiet {
         Box::new(NoProgress {})
     } else {
         let mut pb = ProgressBar::new(decoder.total_frames());
