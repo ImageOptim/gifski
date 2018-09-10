@@ -15,22 +15,25 @@ typedef struct gifski gifski;
   Please note that it is impossible to use this API in a single-threaded program.
   You must have at least two threads -- one for adding the frames, and another for writing.
 
- ```c
- gifski *g = gifski_new(&settings);
+```c
+gifski *g = gifski_new(&settings);
 
- // Call on decoder thread:
- gifski_add_frame_rgba(g, i, width, height, buffer, 5);
- gifski_end_adding_frames(g);
+// Call asynchronously on a decoder thread:
+{
+   gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+   gifski_end_adding_frames(g);
+}
 
- // Call on encoder thread:
- gifski_write(g, "file.gif");
- gifski_drop(g);
- ```
+// Call on encoder thread:
+gifski_write(g, "file.gif"); // blocking
+gifski_drop(g); // must be on the same thread as gifski_write() call
+```
 
- It's safe to call `gifski_drop()` after `gifski_write()`, because `gifski_write()` blocks until `gifski_end_adding_frames()` is called.
+It's safe to call `gifski_drop()` after `gifski_write()`, because `gifski_write()` blocks until `gifski_end_adding_frames()` is called.
 
- It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
- because it blocks and waits until previous frames are written.
+It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
+because it blocks and waits until previous frames are written.
+
 */
 
 /**

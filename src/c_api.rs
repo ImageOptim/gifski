@@ -6,13 +6,15 @@
 //!  ```c
 //!  gifski *g = gifski_new(&settings);
 //!
-//!  // Call on decoder thread:
-//!  gifski_add_frame_rgba(g, i, width, height, buffer, 5);
-//!  gifski_end_adding_frames(g);
+//!  // Call asynchronously on a decoder thread:
+//!  {
+//!     gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+//!     gifski_end_adding_frames(g);
+//!  }
 //!
 //!  // Call on encoder thread:
-//!  gifski_write(g, "file.gif");
-//!  gifski_drop(g);
+//!  gifski_write(g, "file.gif"); // blocking
+//!  gifski_drop(g); // must be on the same thread as gifski_write() call
 //!  ```
 //!
 //!  It's safe to call `gifski_drop()` after `gifski_write()`, because `gifski_write()` blocks until `gifski_end_adding_frames()` is called.
