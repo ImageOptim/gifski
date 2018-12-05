@@ -1,0 +1,24 @@
+name: gifski
+version: 0.8.5
+summary: gifski
+description: |
+   GIF encoder based on libimagequant (pngquant).
+   Squeezes maximum possible quality from the awful
+   GIF format. https://gif.ski
+
+confinement: strict
+
+apps:
+  gifski:
+    command: gifski
+    plugs:
+    - home
+
+parts:
+  gifski:
+    source-type: git
+    source: https://github.com/ImageOptim/gifski.git
+    source-tag: 0.8.5
+    plugin: rust
+    rust-features:
+      - openmp
