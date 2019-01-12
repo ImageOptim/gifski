@@ -36,7 +36,7 @@ See `gifski -h` for more options.
 
 ## Building
 
-1. [Install Rust](https://www.rust-lang.org/en-US/install.html) or run `rustup update`. This project only supports the very latest version of Rust. You will get compile errors about "unstable edition" if you don't run `rustup update`.
+1. [Install Rust via rustup](https://www.rust-lang.org/en-US/install.html) or run `rustup update`. This project only supports up-to-date versions of Rust. You may get compile errors, warnings about "unstable edition", etc. if you don't run `rustup update` regularly.
 2. Clone the repository: `git clone https://github.com/ImageOptim/gifski`
 3. In the cloned directory, run: `cargo build --release`
 
