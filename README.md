@@ -12,7 +12,7 @@ It's a CLI tool, but it can also be compiled [as a C library](https://docs.rs/gi
 
 See [releases](https://github.com/ImageOptim/gifski/releases) page for executables.
 
-If you have [Rust](https://www.rust-lang.org/install.html), you can also get it with [`cargo install gifski`](https://crates.rs/crates/gifski). Run `cargo build --release --features=openmp` to build from source.
+If you have [Rust](https://www.rust-lang.org/install.html) 1.31+, you can also get it with [`cargo install gifski`](https://crates.rs/crates/gifski). Run `cargo build --release --features=openmp` to build from source.
 
 If you have [Homebrew](https://brew.sh/), you can also get it with `brew install gifski`. Add the `--with-openmp` to make it run faster.
 
@@ -36,7 +36,7 @@ See `gifski -h` for more options.
 
 ## Building
 
-1. [Install Rust](https://www.rust-lang.org/en-US/install.html)
+1. [Install Rust](https://www.rust-lang.org/en-US/install.html) or update the version you have. This project only supports the very latest version of Rust.
 2. Clone the repository: `git clone https://github.com/ImageOptim/gifski`
 3. In the cloned directory, run: `cargo build --release`
 
