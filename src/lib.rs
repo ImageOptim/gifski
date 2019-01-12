@@ -17,15 +17,12 @@
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
-extern crate rgb;
-extern crate gif;
-extern crate imgref;
-extern crate imagequant;
-extern crate resize;
-extern crate lodepng;
-extern crate gif_dispose;
-extern crate rayon;
-extern crate pbr;
+
+use gif;
+use imagequant;
+use resize;
+use lodepng;
+use gif_dispose;
 
 #[macro_use] extern crate error_chain;
 use gif::*;
@@ -34,11 +31,11 @@ use imgref::*;
 use imagequant::*;
 
 mod error;
-pub use error::*;
+pub use crate::error::*;
 mod ordqueue;
-use ordqueue::*;
+use crate::ordqueue::*;
 pub mod progress;
-use progress::*;
+use crate::progress::*;
 pub mod c_api;
 
 use std::path::PathBuf;
@@ -172,7 +169,7 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgRef<RGBA8>, importance_map: &[u8], background: Option<ImgRef<RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn quantize(image: ImgRef<'_, RGBA8>, importance_map: &[u8], background: Option<ImgRef<'_, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         let mut liq = Attributes::new();
         if settings.fast {
             liq.set_speed(10);

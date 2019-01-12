@@ -6,29 +6,27 @@ use std::alloc::System;
 #[cfg_attr(feature = "malloc", global_allocator)]
 static A: System = System;
 
-extern crate gifski;
+use gifski;
 #[macro_use] extern crate clap;
 #[macro_use] extern crate error_chain;
 
 #[cfg(feature = "video")]
 extern crate ffmpeg;
-extern crate imgref;
-extern crate rgb;
-extern crate rayon;
-extern crate wild;
-extern crate natord;
+
+use wild;
+use natord;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
 mod png;
 mod source;
-use source::*;
+use crate::source::*;
 
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
 mod error;
-use error::*;
-use error::ResultExt;
+use crate::error::*;
+use crate::error::ResultExt;
 
 use clap::{App, Arg, AppSettings};
 
@@ -190,7 +188,7 @@ fn get_video_decoder(path: &Path) -> BinResult<Box<Source + Send>> {
 }
 
 #[cfg(not(feature = "video"))]
-fn get_video_decoder(_: &Path) -> BinResult<Box<Source + Send>> {
+fn get_video_decoder(_: &Path) -> BinResult<Box<dyn Source + Send>> {
     Err(r"Video support is permanently disabled in this executable.
 
 To enable video decoding you need to recompile gifski from source with:

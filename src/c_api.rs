@@ -91,7 +91,7 @@ pub enum GifskiError {
 
 impl From<CatResult<()>> for GifskiError {
     fn from(res: CatResult<()>) -> Self {
-        use error::ErrorKind::*;
+        use crate::error::ErrorKind::*;
         match res {
             Ok(_) => GifskiError::OK,
             Err(err) => match *err.kind() {
