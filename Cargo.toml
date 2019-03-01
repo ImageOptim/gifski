@@ -30,7 +30,7 @@ lodepng = "2.1.5"
 pbr = "1.0.0"
 rayon = "1.0.0"
 resize = "0.3.0"
-rgb = "0.8.10"
+rgb = "0.8.13"
 wild = "2.0"
 natord = "1.0.9"
 
