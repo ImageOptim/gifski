@@ -6,6 +6,7 @@ description: |
    Squeezes maximum possible quality from the awful
    GIF format. https://gif.ski
 
+base: core18
 confinement: strict
 
 apps:
@@ -22,3 +23,5 @@ parts:
     plugin: rust
     rust-features:
       - openmp
+    stage-packages:
+      - libgomp1
