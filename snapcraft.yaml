@@ -14,6 +14,7 @@ apps:
     command: gifski
     plugs:
     - home
+    - removable-media
 
 parts:
   gifski:
