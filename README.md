@@ -56,7 +56,7 @@ and link with `target/release/libgifski.a`. Please observe the [LICENSE](LICENSE
 
 AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license. I can offer alternative licensing options, including [commercial licenses](https://supso.org/projects/pngquant).
 
-### With built-in video support
+## With built-in video support
 
 The tool optionally supports decoding video directly, but unfortunately it relies on ffmpeg 3.x, which may be *very hard* to get working, so it's not enabled by default.
 
@@ -69,3 +69,25 @@ When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.
 ```sh
 gifski -o out.gif video.mp4
 ```
+
+## Cross-compilation for iOS
+
+Make sure you have Rust installed via [rustup](https://rustup.rs/). Run once:
+
+```sh
+rustup target add aarch64-apple-ios
+```
+
+and then to build the library:
+
+```sh
+cargo build --lib --release --target=aarch64-apple-ios
+```
+
+The build will print "dropping unsupported crate type `cdylib`". This is normal and expected.
+
+This will create a static library in `./target/aarch64-apple-ios/release/libgifski.a`. You can add this library to your Xcode project.
+
+You can also add the `cargo build …` command as a custom target in the Xcode project to have it built automatically.
+
+
