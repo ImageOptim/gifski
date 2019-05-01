@@ -19,7 +19,7 @@ doctest = false
 name = "gifski"
 
 [dependencies]
-clap = "2.32.0"
+clap = "2.33.0"
 error-chain = "0.12.0"
 gif = "0.10.0"
 gif-dispose = "2.1.1"
