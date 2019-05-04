@@ -88,6 +88,6 @@ The build will print "dropping unsupported crate type `cdylib`". This is normal 
 
 This will create a static library in `./target/aarch64-apple-ios/release/libgifski.a`. You can add this library to your Xcode project.
 
-You can also add the `cargo build …` command as a custom target in the Xcode project to have it built automatically.
+You can also [use `cargo lipo` command](https://lib.rs/crates/cargo-lipo) to integrate with Xcode project to have it built automatically.
 
 
