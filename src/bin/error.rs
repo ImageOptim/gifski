@@ -9,7 +9,6 @@ mod ffmpeg {
     pub use ::std::fmt::Error;
 }
 
-
 error_chain! {
     types {
         Error, ErrorKind, ResultExt, BinResult;

@@ -1,4 +1,3 @@
-
 #[cfg(feature = "malloc")]
 use std::alloc::System;
 
@@ -103,7 +102,7 @@ fn bin_main() -> BinResult<()> {
 
     let mut frames: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
     if !matches.is_present("nosort") {
-        frames.sort_by(|a,b| natord::compare(a,b));
+        frames.sort_by(|a, b| natord::compare(a, b));
     }
     let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
 
@@ -175,7 +174,7 @@ fn check_if_path_exists(path: &Path) -> BinResult<()> {
     }
 }
 
-fn parse_opt<T: ::std::str::FromStr<Err=::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
+fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
     match s {
         Some(s) => Ok(Some(s.parse()?)),
         None => Ok(None),
@@ -198,4 +197,3 @@ Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable.
 ")?
 }
-
