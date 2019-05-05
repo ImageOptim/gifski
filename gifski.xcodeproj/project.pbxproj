@@ -18,7 +18,6 @@
 
 /* Begin PBXFileReference section */
 		5A571EEB201613A0006FC323 /* gifski.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = gifski.h; sourceTree = "<group>"; };
-		ADDEDBA66A6E1 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		CA6057D088DDFCD3E9A2ECBC /* Cargo.toml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = "sourcecode.text-based-dylib-definition"; path = Cargo.toml; sourceTree = "<group>"; };
 		CA608A209BAEAE13C0448516 /* gifski */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gifski; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA60E15ACA76538A1122A904 /* libgifski.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libgifski.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -26,14 +25,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		ADDEDBA66A6E2 /* Required Libraries */ = {
-			isa = PBXGroup;
-			children = (
-				ADDEDBA66A6E1 /* libresolv.tbd */,
-			);
-			name = "Required Libraries";
-			sourceTree = "<group>";
-		};
 		CA6027C53F7CDB28378AB0AF /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -49,7 +40,6 @@
 			children = (
 				5A571EEB201613A0006FC323 /* gifski.h */,
 				CA6057D088DDFCD3E9A2ECBC /* Cargo.toml */,
-				ADDEDBA66A6E2 /* Required Libraries */,
 				CA6027C53F7CDB28378AB0AF /* Products */,
 			);
 			sourceTree = "<group>";
