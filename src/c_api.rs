@@ -26,6 +26,8 @@ use std::sync::Mutex;
 use std::fs::File;
 use std::ffi::CStr;
 use std::path::{PathBuf, Path};
+mod c_api_error;
+use c_api_error::*;
 
 /// Settings for creating a new encoder instance. See `gifski_new`
 #[repr(C)]
@@ -59,61 +61,6 @@ pub struct GifskiHandle {
     collector: Mutex<Option<Collector>>,
     progress: Mutex<Option<ProgressCallback>>,
     write_thread: Mutex<Option<thread::JoinHandle<GifskiError>>>,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(non_camel_case_types)]
-pub enum GifskiError {
-    OK = 0,
-    NULL_ARG,
-    INVALID_STATE,
-    QUANT,
-    GIF,
-    THREAD_LOST,
-    NOT_FOUND,
-    PERMISSION_DENIED,
-    ALREADY_EXISTS,
-    INVALID_INPUT,
-    TIMED_OUT,
-    WRITE_ZERO,
-    INTERRUPTED,
-    UNEXPECTED_EOF,
-    ABORTED,
-    OTHER,
-}
-
-impl From<CatResult<()>> for GifskiError {
-    fn from(res: CatResult<()>) -> Self {
-        use crate::error::ErrorKind::*;
-        match res {
-            Ok(_) => GifskiError::OK,
-            Err(err) => match *err.kind() {
-                Quant(_) => GifskiError::QUANT,
-                Pal(_) => GifskiError::GIF,
-                ThreadSend => GifskiError::THREAD_LOST,
-                Io(ref err) => err.kind().into(),
-                _ => GifskiError::OTHER,
-            },
-        }
-    }
-}
-
-impl From<io::ErrorKind> for GifskiError {
-    fn from(res: io::ErrorKind) -> Self {
-        use std::io::ErrorKind as EK;
-        match res {
-            EK::NotFound => GifskiError::NOT_FOUND,
-            EK::PermissionDenied => GifskiError::PERMISSION_DENIED,
-            EK::AlreadyExists => GifskiError::ALREADY_EXISTS,
-            EK::InvalidInput | EK::InvalidData => GifskiError::INVALID_INPUT,
-            EK::TimedOut => GifskiError::TIMED_OUT,
-            EK::WriteZero => GifskiError::WRITE_ZERO,
-            EK::Interrupted => GifskiError::INTERRUPTED,
-            EK::UnexpectedEof => GifskiError::UNEXPECTED_EOF,
-            _ => GifskiError::OTHER,
-        }
-    }
 }
 
 /// Call to start the process
@@ -360,14 +307,14 @@ impl io::Write for CallbackWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match unsafe {(self.cb)(buf.len(), buf.as_ptr(), self.user_data)} {
             0 => Ok(buf.len()),
-            x => Err(io::Error::new(io::ErrorKind::BrokenPipe, format!("{}", x))),
+            x => Err(GifskiError::from(x).into()),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match unsafe {(self.cb)(0, ptr::null(), self.user_data)} {
             0 => Ok(()),
-            x => Err(io::Error::new(io::ErrorKind::BrokenPipe, format!("{}", x))),
+            x => Err(GifskiError::from(x).into()),
         }
     }
 }
