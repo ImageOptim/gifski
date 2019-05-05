@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::io;
 use imagequant;
 use gif_dispose;

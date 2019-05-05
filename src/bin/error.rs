@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use gifski;
 use std::io;
 use std::num;
