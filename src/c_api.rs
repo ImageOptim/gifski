@@ -1,17 +1,19 @@
 //! How to use from C
 //!
-//!  ```c
-//!  gifski *g = gifski_new(&settings);
-//!  gifski_set_file_output(g, "file.gif");
+//! ```c
+//! gifski *g = gifski_new(&(GifskiSettings){});
+//! gifski_set_file_output(g, "file.gif");
 //!
-//!  for(int i=0; i < frames; i++) {
-//!       gifski_add_frame_rgba(g, i, width, height, buffer, 5);
-//!  }
-//!  gifski_finish(g);
-//!  ```
+//! for(int i=0; i < frames; i++) {
+//!      int res = gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+//!      if (res != GIFSKI_OK) break;
+//! }
+//! int res = gifski_finish(g);
+//! if (res != GIFSKI_OK) return;
+//! ```
 //!
-//!  It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
-//!  because it blocks and waits until previous frames are written.
+//! It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
+//! because it blocks and waits until previous frames are written.
 
 use super::*;
 use std::os::raw::{c_char, c_int, c_void};
@@ -383,10 +385,15 @@ fn gifski_write_sync_internal<W: Write + Send>(g: &GifskiHandle, file: W, path: 
     }
 }
 
-/// The last step — wait for all writes to finish.
-/// Returns final status of write operations.
+/// The last step:
+///  - stops accepting any more frames (gifski_add_frame_* calls are blocked)
+///  - blocks and waits until all already-added frames have finished writing
+///
+/// Returns final status of write operations. Remember to check the return value!
 ///
 /// After this call, the handle is freed and can't be used any more.
+///
+/// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
     if g.is_null() {
