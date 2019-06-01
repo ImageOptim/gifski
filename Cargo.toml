@@ -20,7 +20,7 @@ name = "gifski"
 
 [dependencies]
 clap = "2.32.0"
-error-chain = "0.12.0"
+error-chain = "0.12.1"
 gif = "0.10.0"
 gif-dispose = "2.1.1"
 imagequant = "2.11.9"
