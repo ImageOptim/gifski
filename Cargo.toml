@@ -21,7 +21,7 @@ name = "gifski"
 [dependencies]
 clap = "2.32.0"
 error-chain = "0.12.1"
-gif = "0.10.0"
+gif = "0.10.3"
 gif-dispose = "2.1.1"
 imagequant = "2.11.9"
 imgref = "1.3.5"
