@@ -137,7 +137,8 @@ impl Collector {
             let dst_height = height.map(|h| (h as usize).min(image.height())).unwrap_or(image.height() * dst_width / image.width());
             let mut r = resize::new(image.width(), image.height(), dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
             let mut dst = vec![RGBA::new(0, 0, 0, 0); dst_width * dst_height];
-            r.resize(image.buf.as_bytes(), dst.as_bytes_mut());
+            assert_eq!(image.buf().len(), image.width() * image.height());
+            r.resize(image.buf().as_bytes(), dst.as_bytes_mut());
             image = ImgVec::new(dst, dst_width, dst_height)
         }
 
@@ -181,10 +182,11 @@ impl Writer {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality);
-        let mut img = liq.new_image_stride(image.buf, image.width(), image.height(), image.stride(), 0.)?;
+        let mut img = liq.new_image_stride(image.buf(), image.width(), image.height(), image.stride(), 0.)?;
         img.set_importance_map(importance_map)?;
         if let Some(bg) = background {
-            img.set_background(liq.new_image(bg.buf, bg.width(), bg.height(), 0.)?)?;
+            assert_eq!(bg.width(), bg.stride());
+            img.set_background(liq.new_image(bg.buf(), bg.width(), bg.height(), 0.)?)?;
         }
         img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
         let mut res = liq.quantize(&img)?;
@@ -240,7 +242,7 @@ impl Writer {
                 height: image.height() as u16,
                 interlaced: false,
                 palette: Some(pal_rgb),
-                buffer: Cow::Borrowed(&image.buf),
+                buffer: Cow::Borrowed(image.buf()),
             })?;
         }
         Ok(())
@@ -272,7 +274,7 @@ impl Writer {
         } else {
             Err("Found no usable frames to encode")?
         };
-        let mut importance_map = vec![255u8; curr_frame.as_ref().unwrap().1.buf.len()];
+        let mut importance_map = vec![255u8; curr_frame.as_ref().unwrap().1.buf().len()];
         let mut next_frame = if let Some(a) = decode_iter.next() {
             Some(a?)
         } else {
