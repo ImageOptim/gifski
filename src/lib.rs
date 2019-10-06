@@ -37,6 +37,9 @@ use crate::progress::*;
 pub mod c_api;
 mod encoderust;
 
+#[cfg(feature = "gifsicle")]
+mod encodegifsicle;
+
 use std::path::PathBuf;
 use std::io::prelude::*;
 use std::sync::Arc;
@@ -45,7 +48,7 @@ use std::thread;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, u16)>;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Settings {
     /// Resize to max this width if set
     pub width: Option<u32>,
@@ -57,6 +60,18 @@ pub struct Settings {
     pub once: bool,
     /// Lower quality, but faster encode
     pub fast: bool,
+}
+
+impl Settings {
+    #[cfg(not(feature = "gifsicle"))]
+    pub(crate) fn color_quality(&self) -> u8 {
+        self.quality
+    }
+
+    #[cfg(feature = "gifsicle")]
+    pub(crate) fn color_quality(&self) -> u8 {
+        (self.quality * 2).min(100)
+    }
 }
 
 /// Collect frames that will be encoded
@@ -84,6 +99,9 @@ struct GIFFrame {
 
 trait Encoder {
     fn write_frame(&mut self, frame: &GIFFrame, settings: &Settings) -> CatResult<()>;
+    fn finish(&mut self) -> CatResult<()> {
+        Ok(())
+    }
 }
 
 /// Start new encoding
@@ -174,7 +192,7 @@ impl Writer {
             liq.set_speed(10);
         }
         let quality = if background.is_some() { // not first frame
-            settings.quality.into()
+            settings.color_quality().into()
         } else {
             100 // the first frame is too important to ruin it
         };
@@ -202,6 +220,7 @@ impl Writer {
                 Err(ErrorKind::Aborted)?
             }
         }
+        enc.finish()?;
         Ok(())
     }
 
@@ -210,9 +229,28 @@ impl Writer {
     /// `outfile` can be any writer, such as `File` or `&mut Vec`.
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
-    pub fn write<W: Write>(self, writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let mut encoder = encoderust::RustEncoder::new(writer);
-        self.write_with_encoder(&mut encoder, reporter)
+    #[allow(unused_mut)]
+    pub fn write<W: Write>(self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+
+        #[cfg(feature = "gifsicle")]
+        {
+            let encoder: &mut dyn Encoder;
+            let mut gifsicle;
+            let mut rustgif;
+            if self.settings.quality < 100 {
+                let loss = (100 - self.settings.quality as u32) * 6;
+                gifsicle = encodegifsicle::Gifsicle::new(loss, &mut writer);
+                encoder = &mut gifsicle;
+            } else {
+                rustgif = encoderust::RustEncoder::new(writer);
+                encoder = &mut rustgif;
+            }
+            self.write_with_encoder(encoder, reporter)
+        }
+        #[cfg(not(feature = "gifsicle"))]
+        {
+            self.write_with_encoder(&mut encoderust::RustEncoder::new(writer), reporter)
+        }
     }
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
@@ -279,7 +317,7 @@ impl Writer {
 
             let has_prev_frame = i > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
             if has_prev_frame {
-                let q = 100 - settings.quality as u32;
+                let q = 100 - settings.color_quality() as u32;
                 let min_diff = 80 + q * q;
                 debug_assert_eq!(image.width(), screen.pixels.width());
                 importance_map.chunks_mut(image.width()).zip(screen.pixels.rows().zip(image.rows()))

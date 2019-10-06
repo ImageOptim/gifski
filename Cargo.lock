@@ -234,14 +234,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gifsicle"
+version = "1.92.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "cc 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "gifski"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg 0.2.0-alpha.2 (git+https://github.com/kornelski/rust-ffmpeg.git)",
  "gif 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif-dispose 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gifsicle 1.92.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "imagequant 2.11.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "imgref 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lodepng 2.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -684,6 +694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum ffmpeg-sys 4.0.2 (git+https://github.com/meh/rust-ffmpeg-sys)" = "<none>"
 "checksum gif 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "86c2f2b597d6e05c86ee5947b2223bda468fe8dad3e88e2a6520869322aaf568"
 "checksum gif-dispose 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4f7dfe369a0cea0946f8db885225a6f503102f98061ef5452e0f77071bd6bfd4"
+"checksum gifsicle 1.92.0 (registry+https://github.com/rust-lang/crates.io-index)" = "430b8c1b679b0814dfe7e2912e4f3766f00f5e95d1b3570d3a1c6e08c2395ec4"
 "checksum glob 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
 "checksum glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 "checksum imagequant 2.11.9 (registry+https://github.com/rust-lang/crates.io-index)" = "a80fc16cab2203b5ed3bc10d3a957ff2789366b2eebcc7905e87b6277cee0019"
