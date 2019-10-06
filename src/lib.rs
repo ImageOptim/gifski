@@ -24,7 +24,6 @@ use lodepng;
 use gif_dispose;
 
 #[macro_use] extern crate error_chain;
-use gif::*;
 use rgb::*;
 use imgref::*;
 use imagequant::*;
@@ -82,11 +81,66 @@ struct GIFFrame {
     dispose: gif::DisposalMethod,
 }
 
-/// Encoder is initialized after first frame is decoded,
-/// and this explains to Rust that writer `W` is used once for this.
-enum WriteInitState<W: Write> {
-    Uninit(W),
-    Init(Encoder<W>),
+
+trait Encoder {
+    fn write_frame(&mut self, frame: &GIFFrame, settings: &Settings) -> CatResult<()>;
+}
+
+struct RustEncoder<W: Write> {
+    writer: Option<W>,
+    gif_enc: Option<gif::Encoder<W>>,
+}
+
+impl<W: Write> RustEncoder<W> {
+    pub fn new(writer: W) -> Self {
+        RustEncoder {
+            writer: Some(writer),
+            gif_enc: None,
+        }
+    }
+}
+
+impl<W: Write> Encoder for RustEncoder<W> {
+    fn write_frame(&mut self, f: &GIFFrame, settings: &Settings) -> CatResult<()> {
+        let GIFFrame {ref pal, ref image, delay, dispose} = *f;
+
+        let writer = &mut self.writer;
+        let enc = match self.gif_enc {
+            None => {
+                let w = writer.take().unwrap();
+                let mut enc = gif::Encoder::new(w, image.width() as _, image.height() as _, &[])?;
+                if !settings.once {
+                    enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
+                }
+                self.gif_enc.get_or_insert(enc)
+            },
+            Some(ref mut enc) => enc,
+        };
+
+        let mut transparent_index = None;
+        let mut pal_rgb = Vec::with_capacity(3 * pal.len());
+        for (i, p) in pal.into_iter().enumerate() {
+            if p.a == 0 {
+                transparent_index = Some(i as u8);
+            }
+            pal_rgb.extend_from_slice([p.rgb()].as_bytes());
+        }
+
+        enc.write_frame(&gif::Frame {
+            delay,
+            dispose,
+            transparent: transparent_index,
+            needs_user_input: false,
+            top: 0,
+            left: 0,
+            width: image.width() as u16,
+            height: image.height() as u16,
+            interlaced: false,
+            palette: Some(pal_rgb),
+            buffer: Cow::Borrowed(image.buf()),
+        })?;
+        Ok(())
+    }
 }
 
 /// Start new encoding
@@ -198,52 +252,12 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    fn write_frames<W: Write + Send>(write_queue_iter: OrdQueueIter<Arc<GIFFrame>>, outfile: W, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let mut enc = WriteInitState::Uninit(outfile);
-
+    fn write_frames(write_queue_iter: OrdQueueIter<Arc<GIFFrame>>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         for f in write_queue_iter {
-            let GIFFrame {ref pal, ref image, delay, dispose} = *f;
+            enc.write_frame(&f, settings)?;
             if !reporter.increase() {
                 Err(ErrorKind::Aborted)?
             }
-
-            let mut transparent_index = None;
-            let mut pal_rgb = Vec::with_capacity(3 * pal.len());
-            for (i, p) in pal.into_iter().enumerate() {
-                if p.a == 0 {
-                    transparent_index = Some(i as u8);
-                }
-                pal_rgb.extend_from_slice([p.rgb()].as_bytes());
-            }
-
-            enc = match enc {
-                WriteInitState::Uninit(w) => {
-                    let mut enc = Encoder::new(w, image.width() as u16, image.height() as u16, &[])?;
-                    if !settings.once {
-                        enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
-                    }
-                    WriteInitState::Init(enc)
-                },
-                x => x,
-            };
-            let enc = match enc {
-                WriteInitState::Init(ref mut r) => r,
-                _ => unreachable!(),
-            };
-
-            enc.write_frame(&Frame {
-                delay,
-                dispose,
-                transparent: transparent_index,
-                needs_user_input: false,
-                top: 0,
-                left: 0,
-                width: image.width() as u16,
-                height: image.height() as u16,
-                interlaced: false,
-                palette: Some(pal_rgb),
-                buffer: Cow::Borrowed(image.buf()),
-            })?;
         }
         Ok(())
     }
@@ -253,14 +267,19 @@ impl Writer {
     /// `outfile` can be any writer, such as `File` or `&mut Vec`.
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
-    pub fn write<W: Write + Send>(mut self, outfile: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    pub fn write<W: Write>(self, writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        let mut encoder = RustEncoder::new(writer);
+        self.write_with_encoder(&mut encoder, reporter)
+    }
+
+    fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let (write_queue, write_queue_iter) = ordqueue::new(4);
         let queue_iter = self.queue_iter.take().unwrap();
         let settings = self.settings.clone();
         let make_thread = thread::spawn(move || {
             Self::make_frames(queue_iter, write_queue, &settings)
         });
-        Self::write_frames(write_queue_iter, outfile, &self.settings, reporter)?;
+        Self::write_frames(write_queue_iter, encoder, &self.settings, reporter)?;
         make_thread.join().unwrap()?;
         Ok(())
     }
