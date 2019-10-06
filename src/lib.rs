@@ -256,7 +256,7 @@ impl Writer {
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let (write_queue, write_queue_iter) = ordqueue::new(4);
         let queue_iter = self.queue_iter.take().unwrap();
-        let settings = self.settings.clone();
+        let settings = self.settings;
         let make_thread = thread::spawn(move || {
             Self::make_frames(queue_iter, write_queue, &settings)
         });
@@ -317,7 +317,7 @@ impl Writer {
 
             let has_prev_frame = i > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
             if has_prev_frame {
-                let q = 100 - settings.color_quality() as u32;
+                let q = 100 - u32::from(settings.color_quality());
                 let min_diff = 80 + q * q;
                 debug_assert_eq!(image.width(), screen.pixels.width());
                 importance_map.chunks_mut(image.width()).zip(screen.pixels.rows().zip(image.rows()))
@@ -368,7 +368,7 @@ fn colordiff(a: RGBA8, b: RGBA8) -> u32 {
     if a.a == 0 || b.a == 0 {
         return 255 * 255 * 6;
     }
-    (i32::from(a.r as i16 - b.r as i16) * i32::from(a.r as i16 - b.r as i16)) as u32 * 2 +
-        (i32::from(a.g as i16 - b.g as i16) * i32::from(a.g as i16 - b.g as i16)) as u32 * 3 +
-        (i32::from(a.b as i16 - b.b as i16) * i32::from(a.b as i16 - b.b as i16)) as u32
+    (i32::from(i16::from(a.r) - i16::from(b.r)) * i32::from(i16::from(a.r) - i16::from(b.r))) as u32 * 2 +
+    (i32::from(i16::from(a.g) - i16::from(b.g)) * i32::from(i16::from(a.g) - i16::from(b.g))) as u32 * 3 +
+    (i32::from(i16::from(a.b) - i16::from(b.b)) * i32::from(i16::from(a.b) - i16::from(b.b))) as u32
 }

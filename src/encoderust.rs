@@ -39,7 +39,7 @@ impl<W: Write> Encoder for RustEncoder<W> {
 
         let mut transparent_index = None;
         let mut pal_rgb = Vec::with_capacity(3 * pal.len());
-        for (i, p) in pal.into_iter().enumerate() {
+        for (i, p) in pal.iter().enumerate() {
             if p.a == 0 {
                 transparent_index = Some(i as u8);
             }
