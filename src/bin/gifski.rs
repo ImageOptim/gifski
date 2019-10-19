@@ -100,11 +100,12 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .get_matches_from(wild::args_os());
 
-    let mut frames: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
+    let mut frame_paths: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
     if !matches.is_present("nosort") {
-        frames.sort_by(|a, b| natord::compare(a, b));
+        frame_paths.sort_by(|a, b| natord::compare(a, b));
     }
-    let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
+    let (frame_paths, delays) = loop_paths_to_get_delay(frame_paths);
+    let frames: Vec<_> = frame_paths.into_iter().map(|s| PathBuf::from(s)).collect();
 
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let settings = gifski::Settings {
@@ -132,7 +133,7 @@ fn bin_main() -> BinResult<()> {
     let mut decoder = if frames.len() == 1 {
         get_video_decoder(&frames[0])?
     } else {
-        Box::new(png::Lodecoder::new(frames, fps))
+        Box::new(png::Lodecoder::new(frames, fps, delays))
     };
 
     let mut progress: Box<dyn ProgressReporter> = if quiet {
@@ -172,6 +173,38 @@ fn check_if_path_exists(path: &Path) -> BinResult<()> {
         }
         Err(msg)?
     }
+}
+
+fn get_delay_in_path(path: &str) -> Option<(&str,u32)> {
+    let last_two: Vec<&str> = path.split("*").collect();
+    if last_two.len() == 2 {
+        match last_two[1].parse::<u32>()
+        {
+            Ok(mult) => Some((last_two[0], mult)),
+            Err(_) =>  None
+        }
+    }
+    else {
+        None
+    }
+}
+
+fn loop_paths_to_get_delay(paths: Vec<&str>) -> (Vec<&str>, Vec<u32>) {
+    let mut frames: Vec<&str> = Vec::new();
+    let mut delay: Vec<u32> = Vec::new();
+    for path in paths {
+        match get_delay_in_path(path) {
+            Some(t) => {
+                frames.push(t.0);
+                delay.push(t.1);
+            }
+            None => {
+                frames.push(path);
+                delay.push(1 as u32);
+            }
+        }
+    }
+    (frames, delay)
 }
 
 fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
