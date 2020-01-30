@@ -206,7 +206,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.2.0"
-source = "git+https://github.com/kornelski/rust-ffmpeg.git#61a668f5e105232df4af367d332bbd54de3d9f13"
+source = "git+https://github.com/kornelski/rust-ffmpeg.git?rev=61a668f5e105232df4af367d332bbd54de3d9f13#61a668f5e105232df4af367d332bbd54de3d9f13"
 dependencies = [
  "bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg-sys 4.2.1 (git+https://github.com/kornelski/rust-ffmpeg-sys)",
@@ -256,11 +256,11 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg.git)",
+ "ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg.git?rev=61a668f5e105232df4af367d332bbd54de3d9f13)",
  "gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif-dispose 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gifsicle 1.92.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -699,7 +699,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 "checksum env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
 "checksum error-chain 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3ab49e9dcb602294bc42f9a7dfc9bc6e936fca4418ea300dbfb84fe16de0b7d9"
-"checksum ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg.git)" = "<none>"
+"checksum ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg.git?rev=61a668f5e105232df4af367d332bbd54de3d9f13)" = "<none>"
 "checksum ffmpeg-sys 4.2.1 (git+https://github.com/kornelski/rust-ffmpeg-sys)" = "<none>"
 "checksum gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)" = "471d90201b3b223f3451cd4ad53e34295f16a1df17b1edf3736d47761c3981af"
 "checksum gif-dispose 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4f7dfe369a0cea0946f8db885225a6f503102f98061ef5452e0f77071bd6bfd4"
