@@ -130,7 +130,7 @@ fn bin_main() -> BinResult<()> {
     check_if_path_exists(&frames[0])?;
 
     let mut decoder = if frames.len() == 1 {
-        get_video_decoder(&frames[0])?
+        get_video_decoder(&frames[0], fps)?
     } else {
         Box::new(png::Lodecoder::new(frames, fps))
     };
@@ -183,12 +183,12 @@ fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(path: &Path) -> BinResult<Box<Source + Send>> {
-    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path)?))
+fn get_video_decoder(path: &Path, fps: usize) -> BinResult<Box<dyn Source + Send>> {
+    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps)?))
 }
 
 #[cfg(not(feature = "video"))]
-fn get_video_decoder(_: &Path) -> BinResult<Box<dyn Source + Send>> {
+fn get_video_decoder(_: &Path, _fps: usize) -> BinResult<Box<dyn Source + Send>> {
     Err(r"Video support is permanently disabled in this executable.
 
 To enable video decoding you need to recompile gifski from source with:
