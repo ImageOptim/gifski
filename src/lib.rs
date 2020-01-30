@@ -224,7 +224,7 @@ impl Writer {
         for f in write_queue_iter {
             enc.write_frame(&f, settings)?;
             if !reporter.increase() {
-                Err(ErrorKind::Aborted)?
+                return Err(ErrorKind::Aborted.into())
             }
         }
         enc.finish()?;
@@ -280,13 +280,13 @@ impl Writer {
         let mut next_frame = decode_iter.next().transpose()?;
 
         let mut importance_map = match &curr_frame {
-            Some(curr_frame) => vec![255u8; curr_frame.1.buf().len()],
-            None => Err("Found no usable frames to encode")?,
+            Some(curr_frame) => vec![255_u8; curr_frame.1.buf().len()],
+            None => return Err("Found no usable frames to encode".into()),
         };
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
         let mut previous_frame_delay = 2;
-        let mut pts_in_delay_units = 0u64;
+        let mut pts_in_delay_units = 0_u64;
 
         while let Some((i, image, _)) = curr_frame.take() {
             // To convert PTS to delay it's necessary to know when the next frame is to be displayed
@@ -300,14 +300,14 @@ impl Writer {
             } else {
                 previous_frame_delay // for the last frame just assume constant framerate
             };
-            pts_in_delay_units += delay as u64;
+            pts_in_delay_units += u64::from(delay);
             previous_frame_delay = delay;
 
             let mut dispose = gif::DisposalMethod::Keep;
             if let Some((_, ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
-                    Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
-                        next.width(), next.height(), image.width(), image.height()))?;
+                    return Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
+                        next.width(), next.height(), image.width(), image.height()).into());
                 }
 
                 debug_assert_eq!(next.width(), image.width());

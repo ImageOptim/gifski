@@ -13,7 +13,7 @@ pub(crate) struct RustEncoder<W: Write> {
 
 impl<W: Write> RustEncoder<W> {
     pub fn new(writer: W) -> Self {
-        RustEncoder {
+        Self {
             writer: Some(writer),
             gif_enc: None,
         }

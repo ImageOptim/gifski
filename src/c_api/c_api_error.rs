@@ -104,7 +104,7 @@ impl From<io::ErrorKind> for GifskiError {
 impl std::error::Error for GifskiError {}
 
 impl fmt::Display for GifskiError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 }
