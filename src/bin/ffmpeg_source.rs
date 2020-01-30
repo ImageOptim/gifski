@@ -1,10 +1,10 @@
-use ffmpeg;
 use error::*;
+use ffmpeg;
 use gifski::Collector;
-use std::path::Path;
 use imgref::*;
 use rgb::*;
 use source::*;
+use std::path::Path;
 
 pub struct FfmpegDecoder {
     input_context: ffmpeg::format::context::Input,
@@ -58,12 +58,13 @@ impl FfmpegDecoder {
             let mut rgba_frame = ffmpeg::util::frame::video::Video::empty();
             converter.run(&vid_frame, &mut rgba_frame)?;
 
-            let stride = rgba_frame.stride(0) as usize /4;
+            let stride = rgba_frame.stride(0) as usize / 4;
             let rgba_frame = ImgVec::new_stride(
                 rgba_frame.data(0).as_rgba().to_owned(),
                 rgba_frame.width() as usize,
                 rgba_frame.height() as usize,
-                stride);
+                stride,
+            );
 
             // FIXME: support fps override
             let pts = vid_frame.pts().unwrap_or(prev_pts + 1);

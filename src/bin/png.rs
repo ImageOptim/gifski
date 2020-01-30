@@ -1,6 +1,6 @@
+use crate::error::*;
 use crate::source::*;
 use gifski::Collector;
-use crate::error::*;
 use std::path::PathBuf;
 
 pub struct Lodecoder {
@@ -10,10 +10,7 @@ pub struct Lodecoder {
 
 impl Lodecoder {
     pub fn new(frames: Vec<PathBuf>, fps: usize) -> Self {
-        Self {
-            frames,
-            fps,
-        }
+        Self { frames, fps }
     }
 }
 

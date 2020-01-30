@@ -12,8 +12,8 @@ use gifski;
 #[cfg(feature = "video")]
 extern crate ffmpeg;
 
-use wild;
 use natord;
+use wild;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
@@ -24,16 +24,16 @@ use crate::source::*;
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
 mod error;
-use crate::error::*;
 use crate::error::ResultExt;
+use crate::error::*;
 
-use clap::{App, Arg, AppSettings};
+use clap::{App, AppSettings, Arg};
 
-use std::time::Duration;
-use std::path::{Path, PathBuf};
-use std::fs::File;
-use std::thread;
 use std::env;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 #[cfg(feature = "video")]
 const VIDEO_FRAMES_ARG_HELP: &'static str = "one MP4/WebM video, or multiple PNG animation frames";
@@ -152,7 +152,8 @@ fn bin_main() -> BinResult<()> {
         decoder.collect(collector)
     });
 
-    let file = File::create(output_path).chain_err(|| format!("Can't write to {}", output_path.display()))?;
+    let file = File::create(output_path)
+        .chain_err(|| format!("Can't write to {}", output_path.display()))?;
     writer.write(file, &mut *progress)?;
     decode_thread.join().unwrap()?;
     progress.done(&format!("gifski created {}", output_path.display()));

@@ -16,18 +16,18 @@
 //! because it blocks and waits until previous frames are written.
 
 use super::*;
-use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
-use std::mem;
-use std::slice;
-use std::thread;
+use std::ffi::CStr;
 use std::fs;
+use std::fs::File;
 use std::io;
+use std::mem;
+use std::os::raw::{c_char, c_int, c_void};
+use std::path::{Path, PathBuf};
+use std::ptr;
+use std::slice;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::fs::File;
-use std::ffi::CStr;
-use std::path::{PathBuf, Path};
+use std::thread;
 mod c_api_error;
 use self::c_api_error::*;
 
@@ -191,7 +191,7 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
         return GifskiError::NULL_ARG;
     }
     let width = width as usize;
-    let stride = bytes_per_row as usize / mem::size_of_val(&*pixels );
+    let stride = bytes_per_row as usize / mem::size_of_val(&*pixels);
     if stride < width {
         return GifskiError::INVALID_INPUT;
     }
@@ -305,7 +305,7 @@ fn prepare_for_file_writing(g: &GifskiHandleInternal, destination: *const c_char
 }
 
 struct CallbackWriter {
-    cb: unsafe extern fn(usize, *const u8, *mut c_void) -> c_int,
+    cb: unsafe extern "C" fn(usize, *const u8, *mut c_void) -> c_int,
     user_data: *mut c_void,
 }
 
@@ -313,14 +313,14 @@ unsafe impl Send for CallbackWriter {}
 
 impl io::Write for CallbackWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match unsafe {(self.cb)(buf.len(), buf.as_ptr(), self.user_data)} {
+        match unsafe { (self.cb)(buf.len(), buf.as_ptr(), self.user_data) } {
             0 => Ok(buf.len()),
             x => Err(GifskiError::from(x).into()),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        match unsafe {(self.cb)(0, ptr::null(), self.user_data)} {
+        match unsafe { (self.cb)(0, ptr::null(), self.user_data) } {
             0 => Ok(()),
             x => Err(GifskiError::from(x).into()),
         }
@@ -350,18 +350,19 @@ pub unsafe extern "C" fn gifski_set_write_callback(handle: *const GifskiHandle, 
         None => return GifskiError::NULL_ARG,
     };
     let g = retain(handle);
-    let writer = CallbackWriter {cb, user_data};
+    let writer = CallbackWriter { cb, user_data };
     let mut t = g.write_thread.lock().unwrap();
     if t.0 {
         eprintln!("gifski_set_file_output/gifski_set_write_callback has been called already");
         return GifskiError::INVALID_STATE;
     }
-    *t = (true, Some(thread::spawn({
-        let g = Arc::clone(&g);
-        move || {
-            gifski_write_sync_internal(&g, writer, None)
-        }
-    })));
+    *t = (
+        true,
+        Some(thread::spawn({
+            let g = Arc::clone(&g);
+            move || gifski_write_sync_internal(&g, writer, None)
+        })),
+    );
     GifskiError::OK
 }
 
@@ -434,15 +435,18 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
 
 #[test]
 fn c_cb() {
-    let g = unsafe {gifski_new(&GifskiSettings {
-        width: 1, height: 1,
-        quality: 100,
-        once: true,
-        fast: false,
-    })};
+    let g = unsafe {
+        gifski_new(&GifskiSettings {
+            width: 1,
+            height: 1,
+            quality: 100,
+            once: true,
+            fast: false,
+        })
+    };
     assert!(!g.is_null());
     let mut called = false;
-    unsafe extern fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
         let called = user_data as *mut bool;
         *called = true;
         0
@@ -465,7 +469,7 @@ fn cant_write_after_finish() {
     })};
     assert!(!g.is_null());
     let mut called = false;
-    unsafe extern fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
         let called = user_data as *mut bool;
         *called = true;
         0
@@ -504,7 +508,7 @@ fn cant_write_twice() {
         fast: false,
     })};
     assert!(!g.is_null());
-    unsafe extern fn cb(_s: usize, _buf: *const u8, _user: *mut c_void) -> c_int {
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, _user: *mut c_void) -> c_int {
         GifskiError::WRITE_ZERO as c_int
     }
     unsafe {
@@ -529,7 +533,7 @@ fn c_incomplete() {
     unsafe {
         assert_eq!(GifskiError::NULL_ARG, gifski_add_frame_rgba(g, 0, 1, 1, ptr::null(), 5.0));
     }
-    extern fn cb(_: *mut c_void) -> c_int {
+    extern "C" fn cb(_: *mut c_void) -> c_int {
         1
     }
     unsafe {

@@ -1,5 +1,5 @@
-use crate::Encoder;
 use crate::error::CatResult;
+use crate::Encoder;
 use crate::GIFFrame;
 use crate::Settings;
 use rgb::*;

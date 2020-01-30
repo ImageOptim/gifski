@@ -19,14 +19,12 @@
 
 use gif;
 use imagequant;
-use resize;
 use lodepng;
-use gif_dispose;
 
 #[macro_use] extern crate error_chain;
-use rgb::*;
-use imgref::*;
 use imagequant::*;
+use imgref::*;
+use rgb::*;
 
 mod error;
 pub use crate::error::*;
@@ -40,8 +38,8 @@ mod encoderust;
 #[cfg(feature = "gifsicle")]
 mod encodegifsicle;
 
-use std::path::PathBuf;
 use std::io::prelude::*;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use std::thread;
@@ -224,7 +222,7 @@ impl Writer {
         for f in write_queue_iter {
             enc.write_frame(&f, settings)?;
             if !reporter.increase() {
-                return Err(ErrorKind::Aborted.into())
+                return Err(ErrorKind::Aborted.into());
             }
         }
         enc.finish()?;
@@ -290,7 +288,7 @@ impl Writer {
 
         while let Some((i, image, _)) = curr_frame.take() {
             // To convert PTS to delay it's necessary to know when the next frame is to be displayed
-            let delay = if let Some((_,_, next_pts)) = next_frame {
+            let delay = if let Some((_, _, next_pts)) = next_frame {
                 let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
                 if next_pts_in_delay_units > pts_in_delay_units {
                     (next_pts_in_delay_units - pts_in_delay_units).min(100) as u16
@@ -329,25 +327,27 @@ impl Writer {
                 let q = 100 - u32::from(settings.color_quality());
                 let min_diff = 80 + q * q;
                 debug_assert_eq!(image.width(), screen.pixels.width());
-                importance_map.chunks_mut(image.width()).zip(screen.pixels.rows().zip(image.rows()))
-                .flat_map(|(px, (a,b))| {
-                    px.iter_mut().zip(a.iter().cloned().zip(b.iter().cloned()))
-                })
-                .for_each(|(px, (a,b))| {
-                    // TODO: try comparing with max-quality dithered non-transparent frame, but at half res to avoid dithering confusing the results
-                    // and pick pixels/areas that are better left transparent?
+                importance_map
+                    .chunks_mut(image.width())
+                    .zip(screen.pixels.rows().zip(image.rows()))
+                    .flat_map(|(px, (a, b))| {
+                        px.iter_mut().zip(a.iter().cloned().zip(b.iter().cloned()))
+                    })
+                    .for_each(|(px, (a, b))| {
+                        // TODO: try comparing with max-quality dithered non-transparent frame, but at half res to avoid dithering confusing the results
+                        // and pick pixels/areas that are better left transparent?
 
-                    let diff = colordiff(a,b);
-                    // if pixels are close or identical, no weight on them
-                    *px = if diff < min_diff {
-                        0
-                    } else {
-                        // clip max value, since if something's different it doesn't matter how much, it has to be displayed anyway
-                        // but multiply by previous map last, since it already decided non-max value
-                        let t = diff / 32;
-                        ((t * t).min(256) as u16 * u16::from(*px) / 256) as u8
-                    }
-                });
+                        let diff = colordiff(a, b);
+                        // if pixels are close or identical, no weight on them
+                        *px = if diff < min_diff {
+                            0
+                        } else {
+                            // clip max value, since if something's different it doesn't matter how much, it has to be displayed anyway
+                            // but multiply by previous map last, since it already decided non-max value
+                            let t = diff / 32;
+                            ((t * t).min(256) as u16 * u16::from(*px) / 256) as u8
+                        }
+                    });
             }
 
             let (image8, image8_pal) = {
