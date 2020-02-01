@@ -291,7 +291,7 @@ impl Writer {
             let delay = if let Some((_, _, next_pts)) = next_frame {
                 let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
                 if next_pts_in_delay_units > pts_in_delay_units {
-                    (next_pts_in_delay_units - pts_in_delay_units).min(100) as u16
+                    (next_pts_in_delay_units - pts_in_delay_units).min(10000) as u16
                 } else {
                     1
                 }
