@@ -318,6 +318,9 @@ impl Writer {
                     // but pixels that will stay unchanged should have higher quality
                     255 - (colordiff(n, curr) / (255 * 255 * 6 / 170)) as u8
                 }));
+            } else {
+                // Last frame should reset to background to avoid breaking transparent looped anims
+                dispose = gif::DisposalMethod::Background;
             };
 
             let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
