@@ -274,26 +274,30 @@ impl Writer {
         let mut decode_iter = queue_iter.enumerate().map(|(i, tmp)| tmp.map(|(image, delay)| (i, image, delay)));
 
         let mut screen = None;
-        let mut curr_frame = decode_iter.next().transpose()?;
         let mut next_frame = decode_iter.next().transpose()?;
 
-        let mut importance_map = match &curr_frame {
-            Some(curr_frame) => vec![255_u8; curr_frame.1.buf().len()],
+        let mut importance_map = match &next_frame {
+            Some(next_frame) => vec![255_u8; next_frame.1.buf().len()],
             None => return Err("Found no usable frames to encode".into()),
         };
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
-        let mut previous_frame_delay = 2;
+        let mut previous_frame_delay = 3;
         let mut pts_in_delay_units = 0_u64;
 
-        while let Some((i, image, _)) = curr_frame.take() {
+        while let Some((i, image, _)) = {
+            // that's not the while loop, that block gets the next element
+            let curr_frame = next_frame.take();
+            next_frame = decode_iter.next().transpose()?;
+            curr_frame
+        } {
             // To convert PTS to delay it's necessary to know when the next frame is to be displayed
             let delay = if let Some((_, _, next_pts)) = next_frame {
                 let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
                 if next_pts_in_delay_units > pts_in_delay_units {
                     (next_pts_in_delay_units - pts_in_delay_units).min(10000) as u16
                 } else {
-                    1
+                    continue; // skip frames with duplicate/invalid PTS
                 }
             } else {
                 previous_frame_delay // for the last frame just assume constant framerate
@@ -352,6 +356,7 @@ impl Writer {
                         }
                     });
             }
+            previous_frame_dispose = dispose;
 
             let (image8, image8_pal) = {
                 let bg = if has_prev_frame { Some(screen.pixels.as_ref()) } else { None };
@@ -368,10 +373,6 @@ impl Writer {
 
             write_queue.push(i, frame.clone())?;
             screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
-
-            curr_frame = next_frame.take();
-            next_frame = decode_iter.next().transpose()?;
-            previous_frame_dispose = dispose;
         }
 
         Ok(())
