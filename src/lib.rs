@@ -17,7 +17,8 @@
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
-#[macro_use] extern crate error_chain;
+#[macro_use] extern crate quick_error;
+
 use imagequant::*;
 use imgref::*;
 use rgb::*;
@@ -142,7 +143,7 @@ impl Collector {
         let width = self.width;
         let height = self.height;
         let image = lodepng::decode32_file(&path)
-            .chain_err(|| format!("Can't load {}", path.display()))?;
+            .map_err(|err| Error::PNG(format!("Can't load {}: {}", path.display(), err)))?;
 
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), presentation_timestamp)))
     }
@@ -225,7 +226,7 @@ impl Writer {
                 enc.write_frame(&f, settings)?;
             }
             if !reporter.increase() {
-                return Err(ErrorKind::Aborted.into());
+                return Err(Error::Aborted.into());
             }
         }
         enc.finish()?;
@@ -279,7 +280,9 @@ impl Writer {
 
         let mut importance_map = match &next_frame {
             Some(next_frame) => vec![255_u8; next_frame.0.buf().len()],
-            None => return Err("Found no usable frames to encode".into()),
+            None => {
+                return Err(Error::NoFrames)
+            },
         };
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
@@ -298,7 +301,7 @@ impl Writer {
                 if next_pts_in_delay_units > pts_in_delay_units {
                     (next_pts_in_delay_units - pts_in_delay_units).min(10000) as u16
                 } else {
-                    write_queue.send(FrameMessage::Skipped).map_err(|_| ErrorKind::ThreadSend)?;
+                    write_queue.send(FrameMessage::Skipped).map_err(|_| Error::ThreadSend)?;
                     continue; // skip frames with duplicate/invalid PTS
                 }
             } else {
@@ -310,8 +313,8 @@ impl Writer {
             let mut dispose = gif::DisposalMethod::Keep;
             if let Some((ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
-                    return Err(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
-                        next.width(), next.height(), image.width(), image.height()).into());
+                    return Err(Error::WrongSize(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
+                        next.width(), next.height(), image.width(), image.height())));
                 }
 
                 debug_assert_eq!(next.width(), image.width());
@@ -373,7 +376,7 @@ impl Writer {
                 delay,
             });
 
-            write_queue.send(FrameMessage::Write(frame.clone())).map_err(|_| ErrorKind::ThreadSend)?;
+            write_queue.send(FrameMessage::Write(frame.clone())).map_err(|_| Error::ThreadSend)?;
             i += 1;
             screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
         }
