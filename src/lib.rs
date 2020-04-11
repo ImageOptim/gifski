@@ -130,6 +130,8 @@ impl Collector {
     /// Set each frame (index) only once, but you can set them in any order.
     ///
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
+    ///
+    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height), presentation_timestamp)))
     }
@@ -139,6 +141,8 @@ impl Collector {
     /// Frame index starts at 0.
     ///
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
+    ///
+    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_png_file(&mut self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
         let width = self.width;
         let height = self.height;
@@ -278,8 +282,19 @@ impl Writer {
         let mut screen = None;
         let mut next_frame = decode_iter.next().transpose()?;
 
+        let mut last_frame_pts = None;
+        let mut pts_in_delay_units = 0_u64;
         let mut importance_map = match &next_frame {
-            Some(next_frame) => vec![255_u8; next_frame.0.buf().len()],
+            Some((next_frame, pts)) => {
+                // If the first frame doesn't start at 0 (or actually with 1/100th because that's min delay)
+                // interpret it as the delay between (looped) the last and the first frame.
+                if *pts >= 1./100. {
+                    last_frame_pts = Some(*pts);
+                    // Shift all frames by this pts so that frame 0 always starts at 0
+                    pts_in_delay_units = (100.0*(*pts)).round() as _;
+                }
+                vec![255_u8; next_frame.buf().len()]
+            },
             None => {
                 return Err(Error::NoFrames)
             },
@@ -287,7 +302,6 @@ impl Writer {
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
         let mut previous_frame_delay = 3;
-        let mut pts_in_delay_units = 0_u64;
         let mut i = 0;
         while let Some((image, _)) = {
             // that's not the while loop, that block gets the next element
@@ -296,16 +310,20 @@ impl Writer {
             curr_frame
         } {
             // To convert PTS to delay it's necessary to know when the next frame is to be displayed
-            let delay = if let Some((_, next_pts)) = next_frame {
+            let delay = if let Some(next_pts) = next_frame.as_ref().map(|(_, pts)| *pts).or(last_frame_pts) {
                 let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
                 if next_pts_in_delay_units > pts_in_delay_units {
                     (next_pts_in_delay_units - pts_in_delay_units).min(10000) as u16
                 } else {
-                    write_queue.send(FrameMessage::Skipped).map_err(|_| Error::ThreadSend)?;
-                    continue; // skip frames with duplicate/invalid PTS
+                    // skip frames with duplicate/invalid PTS
+                    if next_frame.is_some() {
+                        write_queue.send(FrameMessage::Skipped).map_err(|_| Error::ThreadSend)?;
+                    }
+                    continue;
                 }
             } else {
-                previous_frame_delay // for the last frame just assume constant framerate
+                // for the last frame just assume constant framerate
+                previous_frame_delay
             };
             pts_in_delay_units += u64::from(delay);
             previous_frame_delay = delay;

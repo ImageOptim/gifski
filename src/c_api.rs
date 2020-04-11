@@ -14,6 +14,10 @@
 //!
 //! It's safe and efficient to call `gifski_add_frame_*` in a loop as fast as you can get frames,
 //! because it blocks and waits until previous frames are written.
+//!
+//!
+//! To cancel processing, make progress callback return 0 and call `gifski_finish()`. The write callback
+//! may still be called between the cancellation and `gifski_finish()` returning.
 
 use super::*;
 use std::ffi::CStr;
@@ -105,8 +109,10 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
 /// You can add frames in any order, and they will be sorted by their `frame_number`.
 ///
 /// Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
-/// For a 20fps video it could be `frame_number/20.0`. First frame must have PTS=0.
+/// For a 20fps video it could be `frame_number/20.0`.
 /// Frames with duplicate or out-of-order PTS will be skipped.
+///
+/// The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
@@ -134,8 +140,10 @@ pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, 
 /// Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
 ///
 /// Presentation timestamp (PTS) is time in seconds, since start of the file (at 0), when this frame is to be displayed.
-/// For a 20fps video it could be `frame_number/20.0`. First frame must have PTS=0.
+/// For a 20fps video it could be `frame_number/20.0`.
 /// Frames with duplicate or out-of-order PTS will be skipped.
+///
+/// The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
@@ -199,8 +207,11 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
     add_frame_rgba(handle, frame_number, ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.into())).collect(), width as usize, height as usize), presentation_timestamp)
 }
 
-/// Optional. Allows deprecated `gifski_write` to finish.
+/// Optional and deprecated. Allows deprecated `gifski_write` to finish.
+///
+/// It's sufficient to call `gifski_finish()` without this.
 #[no_mangle]
+#[deprecated]
 pub unsafe extern "C" fn gifski_end_adding_frames(handle: *const GifskiHandle) -> GifskiError {
     let g = match borrow(handle) {
         Some(g) => g,
@@ -217,13 +228,17 @@ pub unsafe extern "C" fn gifski_end_adding_frames(handle: *const GifskiHandle) -
 
 /// Get a callback for frame processed, and abort processing if desired.
 ///
-/// The callback is called once per frame.
+/// The callback is called once per input frame,
+/// even if the encoder decides to skip some frames.
+///
 /// It gets arbitrary pointer (`user_data`) as an argument. `user_data` can be `NULL`.
-/// The callback must be thread-safe (it will be called from another thread).
 ///
 /// The callback must return `1` to continue processing, or `0` to abort.
 ///
-/// Must be called before `gifski_set_file_output()` to take effect.
+/// The callback must be thread-safe (it will be called from another thread).
+/// It must remain valid at all times, until `gifski_finish` completes.
+///
+/// This function must be called before `gifski_set_file_output()` to take effect.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandle, cb: unsafe extern fn(*mut c_void) -> c_int, user_data: *mut c_void) {
     let g = match borrow(handle) {
@@ -242,6 +257,7 @@ pub unsafe extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandl
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
+#[deprecated]
 pub unsafe extern "C" fn gifski_write(handle: *const GifskiHandle, destination: *const c_char) -> GifskiError {
     let g = match borrow(handle) {
         Some(g) => g,
@@ -337,7 +353,7 @@ impl io::Write for CallbackWriter {
 ///
 /// The callback should return 0 (`GIFSKI_OK`) on success, and non-zero on error.
 ///
-/// The callback function must be thread-safe.
+/// The callback function must be thread-safe. It must remain valid at all times, until `gifski_finish` completes.
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
@@ -518,6 +534,7 @@ fn cant_write_twice() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn c_incomplete() {
     let g = unsafe { gifski_new(&GifskiSettings {
         width: 0, height: 0,
