@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "0.10.3"
+version = "0.10.4"
 autobins = false
 edition = "2018"
 
@@ -50,8 +50,8 @@ malloc = []
 path = "src/lib.rs"
 crate-type = ["lib", "staticlib", "cdylib"]
 
-[profile.dev]
-opt-level = 1
+[profile.dev.package.imagequant]
+opt-level = 3
 
 [profile.release]
 panic = "abort"
