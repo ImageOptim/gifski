@@ -214,6 +214,7 @@ GifskiError gifski_set_write_callback(gifski *handle,
  *
  * Returns final status of write operations. Remember to check the return value!
  *
+ * Must always be called, otherwise it will leak memory.
  * After this call, the handle is freed and can't be used any more.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
