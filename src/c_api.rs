@@ -207,25 +207,6 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
     add_frame_rgba(handle, frame_number, ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.into())).collect(), width as usize, height as usize), presentation_timestamp)
 }
 
-/// Optional and deprecated. Allows deprecated `gifski_write` to finish.
-///
-/// It's sufficient to call `gifski_finish()` without this.
-#[no_mangle]
-#[deprecated]
-pub unsafe extern "C" fn gifski_end_adding_frames(handle: *const GifskiHandle) -> GifskiError {
-    let g = match borrow(handle) {
-        Some(g) => g,
-        None => return GifskiError::NULL_ARG,
-    };
-    match g.collector.lock().unwrap().take() {
-        Some(_) => GifskiError::OK,
-        None => {
-            eprintln!("gifski_end_adding_frames has been called already");
-            GifskiError::INVALID_STATE
-        },
-    }
-}
-
 /// Get a callback for frame processed, and abort processing if desired.
 ///
 /// The callback is called once per input frame,
@@ -246,28 +227,6 @@ pub unsafe extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandl
         None => return,
     };
     *g.progress.lock().unwrap() = Some(ProgressCallback::new(cb, user_data));
-}
-
-/// Deprecated. Do not use. Use `gifski_set_file_output` instead.
-///
-/// Blocks the current thread. Starts writing to the `destination` and keeps waiting
-/// for more frames being set by another thread, until `gifski_end_adding_frames()` is called.
-///
-/// This call will block until the entire file is written. You will need to add frames on another thread.
-///
-/// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
-#[no_mangle]
-#[deprecated]
-pub unsafe extern "C" fn gifski_write(handle: *const GifskiHandle, destination: *const c_char) -> GifskiError {
-    let g = match borrow(handle) {
-        Some(g) => g,
-        None => return GifskiError::NULL_ARG,
-    };
-    let (file, path) = match prepare_for_file_writing(g, destination) {
-        Ok(res) => res,
-        Err(err) => return err,
-    };
-    gifski_write_sync_internal(g, file, Some(path))
 }
 
 /// Start writing to the `destination`. This has to be called before any frames are added.
@@ -544,7 +503,6 @@ fn cant_write_twice() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn c_incomplete() {
     let g = unsafe { gifski_new(&GifskiSettings {
         width: 0, height: 0,
@@ -567,8 +525,6 @@ fn c_incomplete() {
         gifski_set_progress_callback(g, cb, ptr::null_mut());
         assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0, 0, 0, 0), 5.0));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 1, 1, 3, 1, &RGB::new(0, 0, 0), 5.0));
-        assert_eq!(GifskiError::OK, gifski_end_adding_frames(g));
-        assert_eq!(GifskiError::INVALID_STATE, gifski_end_adding_frames(g));
         assert_eq!(GifskiError::OK, gifski_finish(g));
     }
 }

@@ -221,19 +221,6 @@ GifskiError gifski_set_write_callback(gifski *handle,
  */
 GifskiError gifski_finish(gifski *g);
 
-// Previous, deprecated name
-#define gifski_drop(a) gifski_finish(a)
-
-/**
- * Deprecated. Do not use.
- */
-GifskiError gifski_write(gifski *, const char *);
-
-/**
- * Optional. Allows deprecated `gifski_write` to finish.
- */
-GifskiError gifski_end_adding_frames(gifski *handle);
-
 #ifdef __cplusplus
 }
 #endif
