@@ -156,7 +156,7 @@ version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "imgref 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgref 1.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rgb 0.8.16 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "0.10.4"
+version = "1.0.0"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg.git?rev=61a668f5e105232df4af367d332bbd54de3d9f13)",
@@ -179,7 +179,7 @@ dependencies = [
  "gif-dispose 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gifsicle 1.92.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "imagequant 2.12.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "imgref 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "imgref 1.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lodepng 2.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "natord 1.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "pbr 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "imgref"
-version = "1.4.1"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -549,7 +549,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum humantime 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
 "checksum imagequant 2.12.5 (registry+https://github.com/rust-lang/crates.io-index)" = "ed204263cc50c834608cc09afae352fbc7f408dd2eaac484914870f686c56a28"
 "checksum imagequant-sys 2.12.5 (registry+https://github.com/rust-lang/crates.io-index)" = "bfdae38117d89989b2c2352cec3d7dca12a207b48b4e20e183b7d0d6b1fd390c"
-"checksum imgref 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5aa18eb070bbea81d409ddebd55e2bcb8c2931ade125bad36d4fe8da115ca82b"
+"checksum imgref 1.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "e82542789c712bcb3a1051b7db56998f75a44838aa7dbff842442473304d55b8"
 "checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 "checksum lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b294d6fa9ee409a054354afc4352b0b9ef7ca222c69b8812cbea9e7d2bf3783f"
 "checksum libc 0.2.68 (registry+https://github.com/rust-lang/crates.io-index)" = "dea0c0405123bba743ee3f91f49b1c7cfb684eef0da0a50110f758ccf24cdff0"
