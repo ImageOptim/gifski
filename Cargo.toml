@@ -20,7 +20,7 @@ name = "gifski"
 
 [dependencies]
 gifsicle = { version = "1.92.0", optional = true }
-clap = "2.33.0"
+clap = "2.33.1"
 gif = "0.10.3"
 gif-dispose = "2.2.0"
 imagequant = "2.12.5"
