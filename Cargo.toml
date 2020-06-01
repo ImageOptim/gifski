@@ -29,7 +29,7 @@ lodepng = "2.5.0"
 pbr = "1.0.2"
 resize = "0.4.0"
 rgb = "0.8.16"
-wild = "2.0.2"
+wild = "2.0.3"
 natord = "1.0.9"
 quick-error = "1.2.3"
 
