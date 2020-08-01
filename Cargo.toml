@@ -34,10 +34,11 @@ natord = "1.0.9"
 quick-error = "1.2.3"
 
 [dependencies.ffmpeg]
-rev = "e8fa3a3e4718c32f2bb89f33a2dfc2dedd4f1e6d"
+rev = "83ee1c4f5a6f09ce03671861f431e1f015095952"
 optional = true
 git = "https://github.com/kornelski/rust-ffmpeg.git"
-features = ["codec", "format", "filter", "software-resampling", "software-scaling", "resampling" ]
+default-features = false
+features = ["ffmpeg4", "codec", "format", "filter", "software-resampling", "software-scaling"]
 
 [features]
 default = []
@@ -56,6 +57,3 @@ opt-level = 3
 [profile.release]
 panic = "abort"
 lto = true
-
-[package.metadata.docs.rs]
-targets = ["x86_64-unknown-linux-gnu"]
