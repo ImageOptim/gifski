@@ -22,7 +22,7 @@ name = "gifski"
 gifsicle = { version = "1.92.0", optional = true }
 clap = "2.33.1"
 gif = "0.10.3"
-gif-dispose = "2.4.0"
+gif-dispose = "2.4.1"
 imagequant = "2.12.5"
 imgref = "1.6.1"
 lodepng = "3.0.0"
