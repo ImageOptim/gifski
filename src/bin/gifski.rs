@@ -8,7 +8,7 @@ static A: System = System;
 #[macro_use] extern crate clap;
 
 #[cfg(feature = "video")]
-extern crate ffmpeg;
+extern crate ffmpeg_next as ffmpeg;
 
 use natord;
 use wild;
@@ -63,13 +63,24 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .arg(Arg::with_name("fps")
                             .long("fps")
-                            .help("Animation frames per second (for PNG frames only)")
+                            .short("r")
+                            .help("Animation frames per second (for PNG frames) or \n\
+                                   downcapped video frame rate (for video sources), \n\
+                                   in which case the value is at most the source \n\
+                                   frame rate times the speed")
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
+                        .arg(Arg::with_name("speed")
+                            .long("speed")
+                            .short("S")
+                            .help("Adjust speed of animation by a factor (no effect \nfor PNG frames)")
+                            .empty_values(false)
+                            .value_name("num")
+                            .default_value("1"))
                         .arg(Arg::with_name("fast")
                             .long("fast")
-                            .help("3 times faster encoding, but 10% lower quality and bigger file"))
+                            .help("3 times faster encoding, but 10% lower quality and \nbigger file"))
                         .arg(Arg::with_name("quality")
                             .long("quality")
                             .value_name("1-100")
@@ -92,7 +103,7 @@ fn bin_main() -> BinResult<()> {
                             .help("Do not loop the GIF"))
                         .arg(Arg::with_name("nosort")
                             .long("nosort")
-                            .help("Use files exactly in the order given, rather than sorted"))
+                            .help("Use files exactly in the order given, rather than \nsorted"))
                         .arg(Arg::with_name("quiet")
                             .long("quiet")
                             .help("Do not show a progress bar"))
@@ -120,6 +131,7 @@ fn bin_main() -> BinResult<()> {
     };
     let quiet = matches.is_present("quiet");
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
+    let speed: f32 = matches.value_of("speed").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
 
     if settings.quality < 20 {
         if settings.quality < 1 {
@@ -134,7 +146,7 @@ fn bin_main() -> BinResult<()> {
     check_if_path_exists(&frames[0])?;
 
     let mut decoder = if frames.len() == 1 {
-        get_video_decoder(&frames[0], fps)?
+        get_video_decoder(&frames[0], fps, speed)?
     } else {
         Box::new(png::Lodecoder::new(frames, fps))
     };
@@ -187,12 +199,12 @@ fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(path: &Path, fps: f32) -> BinResult<Box<dyn Source + Send>> {
-    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps)?))
+fn get_video_decoder(path: &Path, fps: f32, speed: f32) -> BinResult<Box<dyn Source + Send>> {
+    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps, speed)?))
 }
 
 #[cfg(not(feature = "video"))]
-fn get_video_decoder(_: &Path, _fps: f32) -> BinResult<Box<dyn Source + Send>> {
+fn get_video_decoder(_: &Path, _: f32, _: f32) -> BinResult<Box<dyn Source + Send>> {
     Err(r"Video support is permanently disabled in this executable.
 
 To enable video decoding you need to recompile gifski from source with:

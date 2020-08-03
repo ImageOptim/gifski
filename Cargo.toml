@@ -33,17 +33,16 @@ wild = "2.0.4"
 natord = "1.0.9"
 quick-error = "1.2.3"
 
-[dependencies.ffmpeg]
-rev = "e8fa3a3e4718c32f2bb89f33a2dfc2dedd4f1e6d"
+[dependencies.ffmpeg-next]
+rev = "f1ccd4e69641dbd2be98e3ef38e670b592a103c1"
 optional = true
-git = "https://github.com/kornelski/rust-ffmpeg.git"
-features = ["codec", "format", "filter", "software-resampling", "software-scaling", "resampling" ]
+git = "https://github.com/zmwangx/rust-ffmpeg.git"
 
 [features]
 default = []
 openmp = ["imagequant/openmp"]
 openmp-static = ["imagequant/openmp-static"]
-video = ["ffmpeg"]
+video = ["ffmpeg-next"]
 malloc = []
 
 [lib]
