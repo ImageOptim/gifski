@@ -32,9 +32,9 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "video")]
-const VIDEO_FRAMES_ARG_HELP: &'static str = "one MP4/WebM video, or multiple PNG animation frames";
+const VIDEO_FRAMES_ARG_HELP: &'static str = "one video file supported by FFmpeg, or multiple PNG image files";
 #[cfg(not(feature = "video"))]
-const VIDEO_FRAMES_ARG_HELP: &'static str = "PNG animation frames";
+const VIDEO_FRAMES_ARG_HELP: &'static str = "PNG image files";
 
 fn main() {
     if let Err(e) = bin_main() {
@@ -64,25 +64,29 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::with_name("fps")
                             .long("fps")
                             .short("r")
-                            .help("Animation frames per second (for PNG frames) or \n\
-                                   downcapped video frame rate (for video sources), \n\
-                                   in which case the value is at most the source \n\
-                                   frame rate times the speed")
+                            .help("Frame rate of animation. If using PNG files as \n\
+                                   input, this means the speed, as all frames are \n\
+                                   kept. If video is used, it will be resampled to \n\
+                                   this constant rate by dropping and/or duplicating \n\
+                                   frames")
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
                         .arg(Arg::with_name("speed")
                             .long("speed")
                             .short("S")
-                            .help("Adjust speed of animation by a factor (no effect \nfor PNG frames)")
+                            .help("Adjust speed of animation by a factor, in regard \n\
+                                   to the source frame rate (no effect when using PNG \n\
+                                   files as input)")
                             .empty_values(false)
                             .value_name("num")
                             .default_value("1"))
                         .arg(Arg::with_name("fast")
                             .long("fast")
-                            .help("3 times faster encoding, but 10% lower quality and \nbigger file"))
+                            .help("3 times faster encoding, but 10% lower quality and \nlarger file size"))
                         .arg(Arg::with_name("quality")
                             .long("quality")
+                            .short("Q")
                             .value_name("1-100")
                             .takes_value(true)
                             .help("Lower quality may give smaller file"))
@@ -106,8 +110,9 @@ fn bin_main() -> BinResult<()> {
                             .help("Use files exactly in the order given, rather than \nsorted"))
                         .arg(Arg::with_name("quiet")
                             .long("quiet")
-                            .help("Do not show a progress bar"))
-                        .arg(Arg::with_name("FRAMES")
+                            .short("q")
+                            .help("Do not display anything on standard output/console"))
+                        .arg(Arg::with_name("FILE")
                             .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
                             .empty_values(false)
@@ -115,7 +120,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .get_matches_from(wild::args_os());
 
-    let mut frames: Vec<_> = matches.values_of("FRAMES").ok_or("Missing files")?.collect();
+    let mut frames: Vec<_> = matches.values_of("FILE").ok_or("Missing files")?.collect();
     if !matches.is_present("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
@@ -148,6 +153,9 @@ fn bin_main() -> BinResult<()> {
     let mut decoder = if frames.len() == 1 {
         get_video_decoder(&frames[0], fps, speed)?
     } else {
+        if matches.occurrences_of("speed") != 0 {
+            eprintln!("info: speed is ignored when using PNG files as input");
+        }
         Box::new(png::Lodecoder::new(frames, fps))
     };
 
