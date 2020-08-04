@@ -9,9 +9,8 @@ use std::path::Path;
 pub struct FfmpegDecoder {
     input_context: ffmpeg::format::context::Input,
     frames: u64,
-    fps: f32,
-    speed: f32,
-    time_base: f64,
+    filter_fps: f32,
+    pt_step: f64,
 }
 
 impl Source for FfmpegDecoder {
@@ -29,25 +28,24 @@ impl FfmpegDecoder {
         let input_context = ffmpeg::format::input(&path)
             .map_err(|e| format!("Unable to open video file {}: {}", path.display(), e))?;
         // take fps override into account
+        let filter_fps = fps / speed;
         let stream = input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?;
         let time_base = stream.time_base().numerator() as f64 / stream.time_base().denominator() as f64;
-        let frames = (stream.duration() as f64 * time_base as f64 * (fps / speed) as f64).ceil() as u64;
+        let frames = (stream.duration() as f64 * time_base * filter_fps as f64).ceil() as u64;
         Ok(Self {
             input_context,
             frames,
-            fps,
-            speed,
-            time_base,
+            filter_fps,
+            pt_step: 1.0 / fps as f64,
         })
     }
 
     pub fn collect_frames(&mut self, mut dest: Collector) -> BinResult<()> {
-        let (stream_index, mut decoder, mut filter, time_base) = {
+        let (stream_index, mut decoder, mut filter) = {
             let stream = self.input_context.streams().best(ffmpeg::media::Type::Video).ok_or("The file has no video tracks")?;
 
             let decoder = stream.codec().decoder().video().map_err(|e| format!("Unable to decode the codec used in the video: {}", e))?;
 
-            let time_base = self.time_base / self.speed as f64;
             let buffer_args = format!("width={}:height={}:pix_fmt={}:time_base={}:sar={}",
                 decoder.width(),
                 decoder.height(),
@@ -61,16 +59,14 @@ impl FfmpegDecoder {
             let mut filter = ffmpeg::filter::Graph::new();
             filter.add(&ffmpeg::filter::find("buffer").unwrap(), "in", &buffer_args)?;
             filter.add(&ffmpeg::filter::find("buffersink").unwrap(), "out", "")?;
-            filter.output("in", 0)?.input("out", 0)?.parse(&format!("fps=fps={},format=rgba", self.fps / self.speed)[..])?;
+            filter.output("in", 0)?.input("out", 0)?.parse(&format!("fps=fps={},format=rgba", self.filter_fps))?;
             filter.validate()?;
-            (stream.index(), decoder, filter, time_base)
+            (stream.index(), decoder, filter)
         };
 
         let mut i = 0;
         let mut delayed_frames = 0;
         let mut pts_last_packet = 0;
-        let mut ptsf = 0;
-        let ptsf_step = (1.0 / time_base / self.fps as f64) as i64;
 
         let mut vid_frame = ffmpeg::util::frame::Video::empty();
         let mut filt_frame = ffmpeg::util::frame::Video::empty();
@@ -114,16 +110,15 @@ impl FfmpegDecoder {
 
             filter.get("in").unwrap().source().add(&vid_frame).unwrap();
             while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
-                ptsf += ptsf_step;
-                add_frame(&filt_frame, ptsf as f64 * time_base, i)?;
+                add_frame(&filt_frame, self.pt_step * i as f64, i)?;
                 i += 1;
             }
         }
 
         filter.get("in").unwrap().source().close(pts_last_packet).unwrap();
         while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
-            ptsf += ptsf_step;
-            add_frame(&filt_frame, ptsf as f64 * time_base, i)?;
+            add_frame(&filt_frame, self.pt_step * i as f64, i)?;
+            i += 1;
         }
         Ok(())
     }
