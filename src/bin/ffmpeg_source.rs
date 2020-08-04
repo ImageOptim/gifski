@@ -61,13 +61,17 @@ impl FfmpegDecoder {
             let mut filter = ffmpeg::filter::Graph::new();
             filter.add(&ffmpeg::filter::find("buffer").unwrap(), "in", &buffer_args)?;
             filter.add(&ffmpeg::filter::find("buffersink").unwrap(), "out", "")?;
-            filter.output("in", 0)?.input("out", 0)?.parse(&format!("fps=fps={}:eof_action=pass,format=rgba", self.fps / self.speed)[..])?;
+            filter.output("in", 0)?.input("out", 0)?.parse(&format!("fps=fps={},format=rgba", self.fps / self.speed)[..])?;
             filter.validate()?;
             (stream.index(), decoder, filter, time_base)
         };
 
         let mut i = 0;
+        let mut delayed_frames = 0;
+        let mut pts_last_packet = 0;
         let mut ptsf = 0;
+        let ptsf_step = (1.0 / time_base / self.fps as f64) as i64;
+
         let mut vid_frame = ffmpeg::util::frame::Video::empty();
         let mut filt_frame = ffmpeg::util::frame::Video::empty();
         let mut add_frame = |rgba_frame: &ffmpeg::util::frame::Video, pts: f64, pos: i64| -> BinResult<()> {
@@ -81,29 +85,44 @@ impl FfmpegDecoder {
             Ok(dest.add_frame_rgba(pos as usize, rgba_frame, pts)?)
         };
 
-        for (s, packet) in self.input_context.packets() {
-            if s.index() != stream_index {
-                continue;
-            }
+        let mut packets = self.input_context.packets();
+        while let item = packets.next() {
+            let packet = if item.is_none() {
+                ffmpeg::Packet::empty()
+            } else {
+                let (s, packet) = item.unwrap();
+                if s.index() != stream_index {
+                    continue;
+                }
+                pts_last_packet = packet.pts().unwrap() + packet.duration();
+                packet
+            };
             let decoded = decoder.decode(&packet, &mut vid_frame)?;
             if !decoded || 0 == vid_frame.width() {
+                delayed_frames += 1;
                 continue;
+            }
+            unsafe {
+                if packet.is_empty() {
+                    delayed_frames -= 1;
+                }
             }
 
             filter.get("in").unwrap().source().add(&vid_frame).unwrap();
-            while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) { 
-                ptsf = filt_frame.timestamp().unwrap();
+            while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
+                ptsf += ptsf_step;
                 add_frame(&filt_frame, ptsf as f64 * time_base, i)?;
                 i += 1;
             }
+            if delayed_frames == 0 {
+                break;
+            }
         }
-        // round EOF to least integral upper bound
-        let pts_final = ptsf + (1.5 / time_base / self.fps as f64) as i64;
-        filter.get("in").unwrap().source().close(pts_final).unwrap();
-        while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) { 
-            ptsf = filt_frame.timestamp().unwrap();
+
+        filter.get("in").unwrap().source().close(pts_last_packet).unwrap();
+        while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
+            ptsf += ptsf_step;
             add_frame(&filt_frame, ptsf as f64 * time_base, i)?;
-            i += 1;
         }
         Ok(())
     }
