@@ -45,7 +45,6 @@ default = []
 openmp = ["imagequant/openmp"]
 openmp-static = ["imagequant/openmp-static"]
 video = ["ffmpeg"]
-malloc = []
 
 [lib]
 path = "src/lib.rs"

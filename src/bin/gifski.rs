@@ -1,10 +1,3 @@
-#[cfg(feature = "malloc")]
-use std::alloc::System;
-
-#[cfg(feature = "malloc")]
-#[cfg_attr(feature = "malloc", global_allocator)]
-static A: System = System;
-
 #[macro_use] extern crate clap;
 
 use natord;
