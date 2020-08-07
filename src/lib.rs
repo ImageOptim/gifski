@@ -268,13 +268,13 @@ impl Writer {
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let (write_queue, write_queue_iter) = mpsc::sync_channel(4);
-        let queue_iter = self.queue_iter.take().unwrap();
+        let queue_iter = self.queue_iter.take().expect("queue");
         let settings = self.settings;
         let make_thread = thread::spawn(move || {
             Self::make_frames(queue_iter, write_queue, &settings)
         });
         Self::write_frames(write_queue_iter, encoder, &self.settings, reporter)?;
-        make_thread.join().unwrap()?;
+        make_thread.join().map_err(|_| Error::ThreadSend)??;
         Ok(())
     }
 

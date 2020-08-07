@@ -179,7 +179,7 @@ fn bin_main() -> BinResult<()> {
     let file = File::create(output_path)
         .map_err(|e| format!("Can't write to {}: {}", output_path.display(), e))?;
     writer.write(file, &mut *progress)?;
-    decode_thread.join().unwrap()?;
+    decode_thread.join().map_err(|_| "thread died?")??;
     progress.done(&format!("gifski created {}", output_path.display()));
 
     Ok(())

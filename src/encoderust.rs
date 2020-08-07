@@ -27,7 +27,7 @@ impl<W: Write> Encoder for RustEncoder<W> {
         let writer = &mut self.writer;
         let enc = match self.gif_enc {
             None => {
-                let w = writer.take().unwrap();
+                let w = writer.take().expect("writer");
                 let mut enc = gif::Encoder::new(w, image.width() as _, image.height() as _, &[])?;
                 if !settings.once {
                     enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;

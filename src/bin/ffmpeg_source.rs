@@ -9,8 +9,8 @@ use std::path::Path;
 pub struct FfmpegDecoder {
     input_context: ffmpeg::format::context::Input,
     frames: u64,
+    pts_frame_step: f64,
     filter_fps: f32,
-    pt_step: f64,
 }
 
 impl Source for FfmpegDecoder {
@@ -35,8 +35,8 @@ impl FfmpegDecoder {
         Ok(Self {
             input_context,
             frames,
+            pts_frame_step: 1.0 / fps as f64,
             filter_fps,
-            pt_step: 1.0 / fps as f64,
         })
     }
 
@@ -49,7 +49,7 @@ impl FfmpegDecoder {
             let buffer_args = format!("width={}:height={}:pix_fmt={}:time_base={}:sar={}",
                 decoder.width(),
                 decoder.height(),
-                decoder.format().descriptor().unwrap().name(),
+                decoder.format().descriptor().ok_or("ffmpeg format error")?.name(),
                 stream.time_base(),
                 (|sar: ffmpeg::util::rational::Rational| match sar.numerator() {
                     0 => "1".to_string(),
@@ -57,8 +57,8 @@ impl FfmpegDecoder {
                 })(decoder.aspect_ratio()),
             );
             let mut filter = ffmpeg::filter::Graph::new();
-            filter.add(&ffmpeg::filter::find("buffer").unwrap(), "in", &buffer_args)?;
-            filter.add(&ffmpeg::filter::find("buffersink").unwrap(), "out", "")?;
+            filter.add(&ffmpeg::filter::find("buffer").ok_or("ffmpeg format error")?, "in", &buffer_args)?;
+            filter.add(&ffmpeg::filter::find("buffersink").ok_or("ffmpeg format error")?, "out", "")?;
             filter.output("in", 0)?.input("out", 0)?.parse(&format!("fps=fps={},format=rgba", self.filter_fps))?;
             filter.validate()?;
             (stream.index(), decoder, filter)
@@ -83,15 +83,14 @@ impl FfmpegDecoder {
 
         let mut packets = self.input_context.packets();
         while let item = packets.next() {
-            let (packet, packet_is_empty) = if item.is_none() {
-                (ffmpeg::Packet::empty(), true)
-            } else {
-                let (s, packet) = item.unwrap();
+            let (packet, packet_is_empty) = if let Some((s, packet)) = item {
                 if s.index() != stream_index {
                     continue;
                 }
-                pts_last_packet = packet.pts().unwrap() + packet.duration();
+                pts_last_packet = packet.pts().ok_or("ffmpeg format error")? + packet.duration();
                 (packet, false)
+            } else {
+                (ffmpeg::Packet::empty(), true)
             };
             let decoded = decoder.decode(&packet, &mut vid_frame)?;
             if !decoded || 0 == vid_frame.width() {
@@ -108,16 +107,16 @@ impl FfmpegDecoder {
                 delayed_frames -= 1;
             }
 
-            filter.get("in").unwrap().source().add(&vid_frame).unwrap();
-            while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
-                add_frame(&filt_frame, self.pt_step * i as f64, i)?;
+            filter.get("in").ok_or("ffmpeg format error")?.source().add(&vid_frame)?;
+            while let Ok(..) = filter.get("out").ok_or("ffmpeg format error")?.sink().frame(&mut filt_frame) {
+                add_frame(&filt_frame, self.pts_frame_step * i as f64, i)?;
                 i += 1;
             }
         }
 
         filter.get("in").unwrap().source().close(pts_last_packet).unwrap();
-        while let Ok(..) = filter.get("out").unwrap().sink().frame(&mut filt_frame) {
-            add_frame(&filt_frame, self.pt_step * i as f64, i)?;
+        while let Ok(..) = filter.get("out").ok_or("ffmpeg format error")?.sink().frame(&mut filt_frame) {
+            add_frame(&filt_frame, self.pts_frame_step * i as f64, i)?;
             i += 1;
         }
         Ok(())
