@@ -7,9 +7,6 @@ static A: System = System;
 
 #[macro_use] extern crate clap;
 
-#[cfg(feature = "video")]
-extern crate ffmpeg_next as ffmpeg;
-
 use natord;
 use wild;
 

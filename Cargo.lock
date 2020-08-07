@@ -145,7 +145,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-next"
 version = "4.3.4"
-source = "git+https://github.com/zmwangx/rust-ffmpeg.git?rev=f1ccd4e69641dbd2be98e3ef38e670b592a103c1#f1ccd4e69641dbd2be98e3ef38e670b592a103c1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg-sys-next 4.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -198,7 +198,7 @@ name = "gifski"
 version = "1.0.1"
 dependencies = [
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ffmpeg-next 4.3.4 (git+https://github.com/zmwangx/rust-ffmpeg.git?rev=f1ccd4e69641dbd2be98e3ef38e670b592a103c1)",
+ "ffmpeg-next 4.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif-dispose 2.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gifsicle 1.92.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -549,7 +549,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum crossbeam-channel 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "cced8691919c02aac3cb0a1bc2e9b73d89e832bf9a06fc579d4e71b68a2da061"
 "checksum crossbeam-utils 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
 "checksum env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
-"checksum ffmpeg-next 4.3.4 (git+https://github.com/zmwangx/rust-ffmpeg.git?rev=f1ccd4e69641dbd2be98e3ef38e670b592a103c1)" = "<none>"
+"checksum ffmpeg-next 4.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "a4ab595c5d8c0b119b2ef5c98c5eb0c47671cc79d264af77838fdba60ed75d6e"
 "checksum ffmpeg-sys-next 4.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a0f343de3e46fbf5fb95a1a35600eab07adc7f41456c5018bca248c90b0f8345"
 "checksum gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)" = "471d90201b3b223f3451cd4ad53e34295f16a1df17b1edf3736d47761c3981af"
 "checksum gif-dispose 2.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fd26e2d78d52daca286297ba6ddf46ac24924ba1135ab37aaa6ea9a9c0967aa9"

@@ -1,4 +1,3 @@
-extern crate ffmpeg_next as ffmpeg;
 use crate::BinResult;
 use gifski::Collector;
 use imgref::*;
@@ -66,7 +65,6 @@ impl FfmpegDecoder {
 
         let mut i = 0;
         let mut delayed_frames = 0;
-        let mut pts_last_packet = 0;
 
         let mut vid_frame = ffmpeg::util::frame::Video::empty();
         let mut filt_frame = ffmpeg::util::frame::Video::empty();
@@ -82,12 +80,11 @@ impl FfmpegDecoder {
         };
 
         let mut packets = self.input_context.packets();
-        while let item = packets.next() {
-            let (packet, packet_is_empty) = if let Some((s, packet)) = item {
+        loop {
+            let (packet, packet_is_empty) = if let Some((s, packet)) = packets.next() {
                 if s.index() != stream_index {
                     continue;
                 }
-                pts_last_packet = packet.pts().ok_or("ffmpeg format error")? + packet.duration();
                 (packet, false)
             } else {
                 (ffmpeg::Packet::empty(), true)
@@ -114,7 +111,6 @@ impl FfmpegDecoder {
             }
         }
 
-        filter.get("in").unwrap().source().close(pts_last_packet).unwrap();
         while let Ok(..) = filter.get("out").ok_or("ffmpeg format error")?.sink().frame(&mut filt_frame) {
             add_frame(&filt_frame, self.pts_frame_step * i as f64, i)?;
             i += 1;
