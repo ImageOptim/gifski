@@ -150,7 +150,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.2.0"
-source = "git+https://github.com/kornelski/rust-ffmpeg#457ac514861ab3608e553672ae814cf77300e19c"
+source = "git+https://github.com/kornelski/rust-ffmpeg#4da6d270cdaa868e5488144ed73bfaabe329cfcb"
 dependencies = [
  "bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg-sys 4.2.1 (git+https://github.com/meh/rust-ffmpeg-sys)",
@@ -160,7 +160,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "4.2.1"
-source = "git+https://github.com/meh/rust-ffmpeg-sys#ec98e52f150080fc644649ff1ea92314371f32e0"
+source = "git+https://github.com/meh/rust-ffmpeg-sys#bc3510b2c038bbde606039dca4b21e0b7b4344a6"
 dependencies = [
  "bindgen 0.54.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.58 (registry+https://github.com/rust-lang/crates.io-index)",

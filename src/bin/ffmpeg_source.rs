@@ -85,6 +85,7 @@ impl FfmpegDecoder {
                 if s.index() != stream_index {
                     continue;
                 }
+                pts_last_packet = packet.pts().ok_or("ffmpeg format error")? + packet.duration();
                 (packet, false)
             } else {
                 (ffmpeg::Packet::empty(), true)
@@ -105,13 +106,18 @@ impl FfmpegDecoder {
             }
 
             filter.get("in").ok_or("ffmpeg format error")?.source().add(&vid_frame)?;
-            while let Ok(..) = filter.get("out").ok_or("ffmpeg format error")?.sink().frame(&mut filt_frame) {
+            let mut out = filter.get("out").ok_or("ffmpeg format error")?;
+            let mut out = out.sink();
+            while let Ok(..) = out.frame(&mut filt_frame) {
                 add_frame(&filt_frame, self.pts_frame_step * i as f64, i)?;
                 i += 1;
             }
         }
 
-        while let Ok(..) = filter.get("out").ok_or("ffmpeg format error")?.sink().frame(&mut filt_frame) {
+        filter.get("in").ok_or("ffmpeg format error")?.source().close(pts_last_packet)?;
+        let mut out = filter.get("out").ok_or("ffmpeg format error")?;
+        let mut out = out.sink();
+        while let Ok(..) = out.frame(&mut filt_frame) {
             add_frame(&filt_frame, self.pts_frame_step * i as f64, i)?;
             i += 1;
         }
