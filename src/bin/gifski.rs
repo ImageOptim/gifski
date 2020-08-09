@@ -135,7 +135,7 @@ fn bin_main() -> BinResult<()> {
         Err("Quality 100 is maximum")?;
     }
 
-    check_if_path_exists(&frames[0])?;
+    check_if_paths_exist(&frames)?;
 
     let mut decoder = if frames.len() == 1 {
         get_video_decoder(&frames[0], fps, speed)?
@@ -172,18 +172,19 @@ fn bin_main() -> BinResult<()> {
     Ok(())
 }
 
-fn check_if_path_exists(path: &Path) -> BinResult<()> {
-    if path.exists() {
-        Ok(())
-    } else {
-        let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
-        if path.to_str().map_or(false, |p| p.contains('*')) {
-            msg += "\nThe path contains a literal \"*\" character. If you want to select multiple files, don't put the special wildcard characters in quotes.";
-        } else if path.is_relative() {
-            msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
+fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
+    for path in paths {
+        if !path.exists() {
+            let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
+            if path.to_str().map_or(false, |p| p.contains('*')) {
+                msg += "\nThe path contains a literal \"*\" character. If you want to select multiple files, don't put the special wildcard characters in quotes.";
+            } else if path.is_relative() {
+                msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
+            }
+            Err(msg)?
         }
-        Err(msg)?
     }
+    Ok(())
 }
 
 fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
