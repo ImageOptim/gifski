@@ -63,23 +63,28 @@ impl FfmpegDecoder {
             (stream.index(), decoder, filter)
         };
 
-        let mut i = 0;
-        let mut delayed_frames = 0;
 
-        let mut vid_frame = ffmpeg::util::frame::Video::empty();
-        let mut filt_frame = ffmpeg::util::frame::Video::empty();
         let mut add_frame = |rgba_frame: &ffmpeg::util::frame::Video, pts: f64, pos: i64| -> BinResult<()> {
-            let stride = rgba_frame.stride(0) as usize / 4;
+            let stride = rgba_frame.stride(0) as usize;
+            if stride % 4 != 0 {
+                Err("incompatible video")?;
+            }
             let rgba_frame = ImgVec::new_stride(
                 rgba_frame.data(0).as_rgba().to_owned(),
                 rgba_frame.width() as usize,
                 rgba_frame.height() as usize,
-                stride,
+                stride / 4,
             );
             Ok(dest.add_frame_rgba(pos as usize, rgba_frame, pts)?)
         };
 
         let mut packets = self.input_context.packets();
+        let mut vid_frame = ffmpeg::util::frame::Video::empty();
+        let mut filt_frame = ffmpeg::util::frame::Video::empty();
+        let mut i = 0;
+        let mut pts_last_packet = 0;
+        let mut delayed_frames = 0;
+
         loop {
             let (packet, packet_is_empty) = if let Some((s, packet)) = packets.next() {
                 if s.index() != stream_index {
