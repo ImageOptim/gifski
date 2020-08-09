@@ -170,11 +170,14 @@ fn bin_main() -> BinResult<()> {
         decoder.collect(collector)
     });
 
+    let abs_path = dunce::canonicalize(&output_path);
+    let abs_path = abs_path.as_ref().map(|p| p.as_path()).unwrap_or(output_path);
+
     let file = File::create(output_path)
-        .map_err(|e| format!("Can't write to {}: {}", output_path.display(), e))?;
+        .map_err(|e| format!("Can't write to {}: {}", abs_path.display(), e))?;
     writer.write(file, &mut *progress)?;
     decode_thread.join().map_err(|_| "thread died?")??;
-    progress.done(&format!("gifski created {}", output_path.display()));
+    progress.done(&format!("gifski created {}", abs_path.display()));
 
     Ok(())
 }
