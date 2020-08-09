@@ -410,7 +410,7 @@ impl Writer {
                 let min_diff = 80 + q * q;
                 debug_assert_eq!(image.width(), screen.pixels.width());
                 importance_map
-                    .chunks_mut(image.width())
+                    .chunks_exact_mut(image.width())
                     .zip(screen.pixels.rows().zip(image.rows()))
                     .flat_map(|(px, (a, b))| {
                         px.iter_mut().zip(a.iter().cloned().zip(b.iter().cloned()))
@@ -437,6 +437,8 @@ impl Writer {
                 let bg = if has_prev_frame { Some(screen.pixels.as_ref()) } else { None };
                 Self::quantize(image.as_ref(), &importance_map, bg, settings)?
             };
+
+            drop(image);
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
 
