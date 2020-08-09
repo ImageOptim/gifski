@@ -94,20 +94,21 @@ pub struct Writer {
 struct GIFFrame {
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
-    delay: u16,
     dispose: gif::DisposalMethod,
 }
 
 trait Encoder {
-    fn write_frame(&mut self, frame: &GIFFrame, settings: &Settings) -> CatResult<()>;
+    fn write_frame(&mut self, frame: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()>;
     fn finish(&mut self) -> CatResult<()> {
         Ok(())
     }
 }
 
-enum FrameMessage {
-    Write(Arc<GIFFrame>),
-    Skipped,
+struct FrameMessage {
+    /// 1..
+    ordinal_frame_number: usize,
+    frame: Arc<GIFFrame>,
+    pts: f64,
 }
 
 /// Start new encoding
@@ -256,13 +257,53 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    fn write_frames(write_queue_iter: mpsc::Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        for f in write_queue_iter {
-            if let FrameMessage::Write(f) = f {
-                enc.write_frame(&f, settings)?;
+    fn write_frames(write_queue: mpsc::Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        let mut write_queue = write_queue
+            .into_iter()
+            .peekable();
+
+        let mut previous_frame_delay = 3;
+        let mut last_frame_delay_s = None;
+        let mut pts_in_delay_units = 0_u64;
+
+        if let Some(&FrameMessage {pts, ..}) = write_queue.peek() {
+            // If the first frame doesn't start at 0 (or actually with 1/100th because that's min delay)
+            // interpret it as the delay between (looped) the last and the first frame.
+            if pts >= 1./100. {
+                last_frame_delay_s = Some(pts);
+                // Shift all frames by this pts so that frame 0 always starts at 0
+                pts_in_delay_units = (100. * pts).floor() as _;
             }
-            if !reporter.increase() {
-                return Err(Error::Aborted.into());
+        }
+
+        let mut n_done = 0;
+        while let Some(FrameMessage {frame, ordinal_frame_number, ..}) = write_queue.next() {
+            let next_frame = write_queue.peek();
+
+            // To convert PTS to delay it's necessary to know when the next frame is to be displayed
+            let delay = if let Some(next_pts) = next_frame.as_ref().map(|m| m.pts).or_else(|| {
+                    last_frame_delay_s.map(|s| pts_in_delay_units as f64 / 100.0 + s)
+                }) {
+                let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
+                next_pts_in_delay_units.saturating_sub(pts_in_delay_units).min(10000) as u16
+            } else {
+                // for the last frame just assume constant framerate
+                previous_frame_delay
+            };
+            pts_in_delay_units += u64::from(delay);
+            previous_frame_delay = delay;
+
+            // skip frames with bad pts
+            if delay != 0 {
+                enc.write_frame(&frame, delay, settings)?;
+            }
+
+            // loop to report skipped frames too
+            while n_done < ordinal_frame_number {
+                n_done += 1;
+                if !reporter.increase() {
+                    return Err(Error::Aborted.into());
+                }
             }
         }
         enc.finish()?;
@@ -314,18 +355,9 @@ impl Writer {
         let mut screen = None;
         let mut next_frame = decode_iter.next().transpose()?;
 
-        let mut last_frame_delay_s = None;
-        let mut pts_in_delay_units = 0_u64;
         let mut importance_map = match &next_frame {
-            Some((next_frame, pts)) => {
-                // If the first frame doesn't start at 0 (or actually with 1/100th because that's min delay)
-                // interpret it as the delay between (looped) the last and the first frame.
-                if *pts >= 1./100. {
-                    last_frame_delay_s = Some(*pts);
-                    // Shift all frames by this pts so that frame 0 always starts at 0
-                    pts_in_delay_units = (100.0*(*pts)).floor() as _;
-                }
-                vec![255_u8; next_frame.buf().len()]
+            Some((next_frame, _)) => {
+                vec![255_u8; next_frame.width() * next_frame.height()]
             },
             None => {
                 return Err(Error::NoFrames)
@@ -333,39 +365,19 @@ impl Writer {
         };
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
-        let mut previous_frame_delay = 3;
-        let mut i = 0;
-        while let Some((image, _)) = {
+        let mut frames_written = 0;
+        let mut ordinal_frame_number = 0;
+        while let Some((image, pts)) = {
             // that's not the while loop, that block gets the next element
             let curr_frame = next_frame.take();
             next_frame = decode_iter.next().transpose()?;
             curr_frame
         } {
-            // To convert PTS to delay it's necessary to know when the next frame is to be displayed
-            let delay = if let Some(next_pts) = next_frame.as_ref().map(|(_, pts)| *pts).or_else(|| {
-                    last_frame_delay_s.map(|s| pts_in_delay_units as f64 / 100.0 + s)
-                }) {
-                let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
-                if next_pts_in_delay_units > pts_in_delay_units {
-                    (next_pts_in_delay_units - pts_in_delay_units).min(10000) as u16
-                } else {
-                    // skip frames with duplicate/invalid PTS
-                    if next_frame.is_some() {
-                        write_queue.send(FrameMessage::Skipped).map_err(|_| Error::ThreadSend)?;
-                    }
-                    continue;
-                }
-            } else {
-                // for the last frame just assume constant framerate
-                previous_frame_delay
-            };
-            pts_in_delay_units += u64::from(delay);
-            previous_frame_delay = delay;
-
+            ordinal_frame_number += 1;
             let mut dispose = gif::DisposalMethod::Keep;
             if let Some((ref next, _)) = next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
-                    return Err(Error::WrongSize(format!("Frame {} has wrong size ({}×{}, expected {}×{})", i+1,
+                    return Err(Error::WrongSize(format!("Frame {} has wrong size ({}×{}, expected {}×{})", ordinal_frame_number,
                         next.width(), next.height(), image.width(), image.height())));
                 }
 
@@ -386,7 +398,7 @@ impl Writer {
 
             let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
 
-            let has_prev_frame = i > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
+            let has_prev_frame = frames_written > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
             if has_prev_frame {
                 let q = 100 - u32::from(settings.color_quality());
                 let min_diff = 80 + q * q;
@@ -425,11 +437,14 @@ impl Writer {
                 image: image8,
                 pal: image8_pal,
                 dispose,
-                delay,
             });
 
-            write_queue.send(FrameMessage::Write(frame.clone())).map_err(|_| Error::ThreadSend)?;
-            i += 1;
+            write_queue.send(FrameMessage {
+                ordinal_frame_number,
+                pts,
+                frame: frame.clone()
+            }).map_err(|_| Error::ThreadSend)?;
+            frames_written += 1;
             screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
         }
 

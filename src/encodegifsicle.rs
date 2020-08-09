@@ -66,8 +66,8 @@ impl Encoder for Gifsicle<'_> {
         }
         Ok(())
     }
-    fn write_frame(&mut self, frame: &GIFFrame, settings: &Settings) -> CatResult<()> {
-        let GIFFrame {ref pal, ref image, delay, dispose} = *frame;
+    fn write_frame(&mut self, frame: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
+        let GIFFrame {ref pal, ref image, dispose} = *frame;
 
         if self.gfs.is_null() {
             let gfs = unsafe {

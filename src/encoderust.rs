@@ -21,8 +21,8 @@ impl<W: Write> RustEncoder<W> {
 }
 
 impl<W: Write> Encoder for RustEncoder<W> {
-    fn write_frame(&mut self, f: &GIFFrame, settings: &Settings) -> CatResult<()> {
-        let GIFFrame {ref pal, ref image, delay, dispose} = *f;
+    fn write_frame(&mut self, f: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
+        let GIFFrame {ref pal, ref image, dispose} = *f;
 
         let writer = &mut self.writer;
         let enc = match self.gif_enc {
