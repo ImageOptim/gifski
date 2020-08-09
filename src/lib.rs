@@ -43,6 +43,7 @@ use std::thread;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
 
+/// Encoding settings for the `new()` function
 #[derive(Copy, Clone, Default)]
 pub struct Settings {
     /// Resize to max this width if set
@@ -66,6 +67,11 @@ impl Settings {
     #[cfg(feature = "gifsicle")]
     pub(crate) fn color_quality(&self) -> u8 {
         (self.quality * 2).min(100)
+    }
+
+    /// add_frame is going to resize the images to this size.
+    pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
+        dimensions_for_image((width, height), (self.width, self.height))
     }
 }
 
@@ -108,6 +114,9 @@ enum FrameMessage {
 ///
 /// Encoding is multi-threaded, and the `Collector` and `Writer`
 /// can be used on sepate threads.
+///
+/// You feed input frames to the `Collector`, and ask the `Writer` to
+/// start writing the GIF.
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     let (queue, queue_iter) = ordqueue::new(4);
 
@@ -153,19 +162,16 @@ impl Collector {
     }
 
     fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
-        if let Some(width) = width {
-            if image.width() != image.stride() {
-                let mut contig = Vec::with_capacity(image.width() * image.height());
-                contig.extend(image.rows().flat_map(|r| r.iter().cloned()));
-                image = ImgVec::new(contig, image.width(), image.height());
-            }
-            let dst_width = (width as usize).min(image.width());
-            let dst_height = height.map(|h| (h as usize).min(image.height())).unwrap_or(image.height() * dst_width / image.width());
-            let mut r = resize::new(image.width(), image.height(), dst_width, dst_height, resize::Pixel::RGBA, resize::Type::Lanczos3);
-            let mut dst = vec![RGBA::new(0, 0, 0, 0); dst_width * dst_height];
-            assert_eq!(image.buf().len(), image.width() * image.height());
-            r.resize(image.buf().as_bytes(), dst.as_bytes_mut());
-            image = ImgVec::new(dst, dst_width, dst_height)
+        let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
+
+        if width != image.width() || height != image.height() {
+            let (buf, img_width, img_height) = image.into_contiguous_buf();
+            assert_eq!(buf.len(), img_width * img_height);
+
+            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA, resize::Type::Lanczos3);
+            let mut dst = vec![RGBA::new(0, 0, 0, 0); width * height];
+            r.resize(buf.as_bytes(), dst.as_bytes_mut());
+            image = ImgVec::new(dst, width, height)
         }
 
         const DITHER: [u8; 64] = [
@@ -187,6 +193,32 @@ impl Collector {
             }
         }
         image
+    }
+}
+
+/// add_frame is going to resize the image to this size.
+/// The `Option` args are user-specified max width and max height
+fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>, Option<u32>)) -> (usize, usize) {
+    match resize_to {
+        (None, None) => {
+            let factor = (img_w * img_h + 800*600) / (800*600);
+            if factor > 1 {
+                (img_w / factor, img_h / factor)
+            } else {
+                (img_w, img_h)
+            }
+        },
+        (Some(w), Some(h)) => {
+            ((w as usize).min(img_w), (h as usize).min(img_h))
+        },
+        (Some(w), None) => {
+            let w = (w as usize).min(img_w);
+            (w, img_h * w / img_w)
+        }
+        (None, Some(h)) => {
+            let h = (h as usize).min(img_h);
+            (img_w * h / img_h, h)
+        },
     }
 }
 
