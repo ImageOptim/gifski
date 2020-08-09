@@ -47,7 +47,11 @@ impl FfmpegDecoder {
 
             let decoder = stream.codec().decoder().video().map_err(|e| format!("Unable to decode the codec used in the video: {}", e))?;
 
-            let buffer_args = format!("width={}:height={}:pix_fmt={}:time_base={}:sar={}",
+            let (dest_width, dest_height) = self.settings.dimensions_for_image(decoder.width() as _, decoder.height() as _);
+
+            let buffer_args = format!("width={}:height={}:video_size={}x{}:pix_fmt={}:time_base={}:sar={}",
+                dest_width,
+                dest_height,
                 decoder.width(),
                 decoder.height(),
                 decoder.format().descriptor().ok_or("ffmpeg format error")?.name(),
