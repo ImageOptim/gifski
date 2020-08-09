@@ -1,5 +1,6 @@
 #[macro_use] extern crate clap;
 
+use gifski::Settings;
 use natord;
 use wild;
 
@@ -114,16 +115,23 @@ fn bin_main() -> BinResult<()> {
     let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
 
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
-    let settings = gifski::Settings {
-        width: parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?,
-        height: parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?,
+    let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;
+    let height = parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?;
+    let settings = Settings {
+        width,
+        height,
         quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
     };
     let quiet = matches.is_present("quiet");
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
-    let speed: f32 = matches.value_of("speed").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
+    let speed: f32 = matches.value_of("fast-forward").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
+
+    let rate = source::Fps {
+        speed,
+        fps,
+    };
 
     if settings.quality < 20 {
         if settings.quality < 1 {
@@ -145,12 +153,12 @@ fn bin_main() -> BinResult<()> {
     check_if_paths_exist(&frames)?;
 
     let mut decoder = if frames.len() == 1 {
-        get_video_decoder(&frames[0], fps, speed)?
+        get_video_decoder(&frames[0], rate, settings)?
     } else {
         if speed != 1.0 {
             Err("Speed doesn't apply to PNG files as input, use fps only")?;
         }
-        Box::new(png::Lodecoder::new(frames, fps))
+        Box::new(png::Lodecoder::new(frames, &rate))
     };
 
     let mut progress: Box<dyn ProgressReporter> = if quiet {
@@ -205,12 +213,12 @@ fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(path: &Path, fps: f32, speed: f32) -> BinResult<Box<dyn Source + Send>> {
-    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps, speed)?))
+fn get_video_decoder(path: &Path, fps: source::Fps, settings: Settings) -> BinResult<Box<dyn Source + Send>> {
+    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps, settings)?))
 }
 
 #[cfg(not(feature = "video"))]
-fn get_video_decoder(_: &Path, _: f32, _: f32) -> BinResult<Box<dyn Source + Send>> {
+fn get_video_decoder(_: &Path, _: source::Fps, _: Settings) -> BinResult<Box<dyn Source + Send>> {
     Err(r"Video support is permanently disabled in this executable.
 
 To enable video decoding you need to recompile gifski from source with:
