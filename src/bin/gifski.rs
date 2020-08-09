@@ -128,11 +128,18 @@ fn bin_main() -> BinResult<()> {
     if settings.quality < 20 {
         if settings.quality < 1 {
             Err("Quality too low")?;
-        } else {
+        } else if !quiet {
             eprintln!("warning: quality {} will give really bad results", settings.quality);
         }
     } else if settings.quality > 100 {
         Err("Quality 100 is maximum")?;
+    }
+
+    if fps > 100.0 {
+        Err("100 fps is maximum")?;
+    }
+    else if !quiet && fps > 50.0 {
+        eprintln!("warning: web browsers support max 50 fps");
     }
 
     check_if_paths_exist(&frames)?;
