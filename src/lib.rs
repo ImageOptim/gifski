@@ -92,6 +92,8 @@ pub struct Writer {
 }
 
 struct GIFFrame {
+    left: u16,
+    top: u16,
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     dispose: gif::DisposalMethod,
@@ -274,7 +276,7 @@ impl Writer {
                 // Shift all frames by this pts so that frame 0 always starts at 0
                 pts_in_delay_units = (100. * pts).floor() as _;
             }
-        }
+            }
 
         let mut n_done = 0;
         while let Some(FrameMessage {frame, ordinal_frame_number, ..}) = write_queue.next() {
@@ -301,10 +303,10 @@ impl Writer {
             // loop to report skipped frames too
             while n_done < ordinal_frame_number {
                 n_done += 1;
-                if !reporter.increase() {
-                    return Err(Error::Aborted.into());
-                }
+            if !reporter.increase() {
+                return Err(Error::Aborted.into());
             }
+        }
         }
         enc.finish()?;
         Ok(())
@@ -437,7 +439,15 @@ impl Writer {
             };
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
+
+            let (left, top, image8) = match trim_image(image8, &image8_pal, transparent_index, screen.pixels.as_ref()) {
+                Some(trimmed) => trimmed,
+                None => continue, // no pixels left
+            };
+
             let frame = Arc::new(GIFFrame {
+                left,
+                top,
                 image: image8,
                 pal: image8_pal,
                 dispose,
@@ -449,11 +459,51 @@ impl Writer {
                 frame: frame.clone()
             }).map_err(|_| Error::ThreadSend)?;
             frames_written += 1;
-            screen.blit(Some(&frame.pal), dispose, 0, 0, frame.image.as_ref(), transparent_index)?;
+            screen.blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
         }
 
         Ok(())
     }
+}
+
+fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
+    let mut image_trimmed = image8.as_ref();
+
+    let bottom = image_trimmed.rows().zip(screen.rows()).rev()
+        .take_while(|(img_row, screen_row)| {
+            img_row.iter().copied().zip(screen_row.iter().copied())
+                .all(|(px, bg)| {
+                    Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&bg)
+                })
+        })
+        .count();
+
+    if bottom > 0 {
+        if bottom == image_trimmed.height() {
+            return None;
+        }
+        image_trimmed = image_trimmed.sub_image(0, 0, image_trimmed.width(), image_trimmed.height() - bottom);
+    }
+
+    let top = image_trimmed.rows().zip(screen.rows())
+        .take_while(|(img_row, screen_row)| {
+            img_row.iter().copied().zip(screen_row.iter().copied())
+                .all(|(px, bg)| {
+                    Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&bg)
+                })
+        })
+        .count();
+
+    if top > 0 {
+        image_trimmed = image_trimmed.sub_image(0, top, image_trimmed.width(), image_trimmed.height() - top);
+    }
+
+    if image_trimmed.height() != image8.height() {
+        let (buf, width, height) = image_trimmed.to_contiguous_buf();
+        image8 = Img::new(buf.into_owned(), width, height);
+    }
+
+    Some((0, top as _, image8))
 }
 
 #[inline]
