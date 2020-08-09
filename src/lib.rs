@@ -381,7 +381,11 @@ impl Writer {
                         next.width(), next.height(), image.width(), image.height())));
                 }
 
-                debug_assert_eq!(next.width(), image.width());
+                // Skip identical frames
+                if next.as_ref() == image.as_ref() {
+                    continue;
+                }
+
                 importance_map.clear();
                 importance_map.extend(next.rows().zip(image.rows()).flat_map(|(n, curr)| n.iter().cloned().zip(curr.iter().cloned())).map(|(n, curr)| {
                     if n.a < curr.a {
