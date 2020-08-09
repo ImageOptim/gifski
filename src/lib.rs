@@ -389,7 +389,7 @@ impl Writer {
                 }
 
                 importance_map.clear();
-                importance_map.extend(next.rows().zip(image.rows()).flat_map(|(n, curr)| n.iter().cloned().zip(curr.iter().cloned())).map(|(n, curr)| {
+                importance_map.extend(next.rows().zip(image.rows()).flat_map(|(n, curr)| n.iter().copied().zip(curr.iter().copied())).map(|(n, curr)| {
                     if n.a < curr.a {
                         dispose = gif::DisposalMethod::Background;
                     }
@@ -412,22 +412,22 @@ impl Writer {
                 importance_map
                     .chunks_exact_mut(image.width())
                     .zip(screen.pixels.rows().zip(image.rows()))
-                    .flat_map(|(px, (a, b))| {
-                        px.iter_mut().zip(a.iter().cloned().zip(b.iter().cloned()))
+                    .flat_map(|(imp, (bg, px))| {
+                        imp.iter_mut().zip(bg.iter().copied().zip(px.iter().copied()))
                     })
-                    .for_each(|(px, (a, b))| {
+                    .for_each(|(imp, (bg, px))| {
                         // TODO: try comparing with max-quality dithered non-transparent frame, but at half res to avoid dithering confusing the results
                         // and pick pixels/areas that are better left transparent?
 
-                        let diff = colordiff(a, b);
+                        let diff = colordiff(bg, px);
                         // if pixels are close or identical, no weight on them
-                        *px = if diff < min_diff {
+                        *imp = if diff < min_diff {
                             0
                         } else {
                             // clip max value, since if something's different it doesn't matter how much, it has to be displayed anyway
                             // but multiply by previous map last, since it already decided non-max value
                             let t = diff / 32;
-                            ((t * t).min(256) as u16 * u16::from(*px) / 256) as u8
+                            ((t * t).min(256) as u16 * u16::from(*imp) / 256) as u8
                         }
                     });
             }
