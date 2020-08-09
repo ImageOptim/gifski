@@ -62,12 +62,9 @@ fn bin_main() -> BinResult<()> {
                             .empty_values(false)
                             .value_name("num")
                             .default_value("20"))
-                        .arg(Arg::with_name("speed")
-                            .long("speed")
-                            .short("S")
-                            .help("Adjust speed of animation by a factor, in regard \n\
-                                   to the source frame rate (no effect when using PNG \n\
-                                   files as input)")
+                        .arg(Arg::with_name("fast-forward")
+                            .long("fast-forward")
+                            .help("Multiply speed of video by a factor\n(no effect when using PNG files as input)")
                             .empty_values(false)
                             .value_name("num")
                             .default_value("1"))
@@ -143,8 +140,8 @@ fn bin_main() -> BinResult<()> {
     let mut decoder = if frames.len() == 1 {
         get_video_decoder(&frames[0], fps, speed)?
     } else {
-        if matches.occurrences_of("speed") != 0 {
-            eprintln!("info: speed is ignored when using PNG files as input");
+        if speed != 1.0 {
+            Err("Speed doesn't apply to PNG files as input, use fps only")?;
         }
         Box::new(png::Lodecoder::new(frames, fps))
     };
