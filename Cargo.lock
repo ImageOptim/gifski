@@ -208,6 +208,7 @@ name = "gifski"
 version = "1.2.0"
 dependencies = [
  "clap 2.33.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-channel 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "dunce 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffmpeg 0.2.0 (git+https://github.com/kornelski/rust-ffmpeg)",
  "gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)",

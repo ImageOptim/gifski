@@ -38,7 +38,7 @@ mod encodegifsicle;
 use std::io::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc;
+use crossbeam_channel::{Sender, Receiver};
 use std::thread;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
@@ -87,6 +87,7 @@ pub struct Collector {
 
 /// Perform GIF writing
 pub struct Writer {
+    /// Input frame decoder results
     queue_iter: Option<OrdQueueIter<DecodedImage>>,
     settings: Settings,
 }
@@ -259,7 +260,7 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    fn write_frames(write_queue: mpsc::Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    fn write_frames(write_queue: Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let mut write_queue = write_queue
             .into_iter()
             .peekable();
@@ -342,7 +343,7 @@ impl Writer {
     }
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let (write_queue, write_queue_iter) = mpsc::sync_channel(4);
+        let (write_queue, write_queue_iter) = crossbeam_channel::bounded(4);
         let queue_iter = self.queue_iter.take().expect("queue");
         let settings = self.settings;
         let make_thread = thread::spawn(move || {
@@ -353,7 +354,7 @@ impl Writer {
         Ok(())
     }
 
-    fn make_frames(mut decode_iter: OrdQueueIter<DecodedImage>, write_queue: mpsc::SyncSender<FrameMessage>, settings: &Settings) -> CatResult<()> {
+    fn make_frames(mut decode_iter: OrdQueueIter<DecodedImage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
         let mut screen = None;
         let mut next_frame = decode_iter.next().transpose()?;
 
@@ -459,7 +460,7 @@ impl Writer {
                 ordinal_frame_number,
                 pts,
                 frame: frame.clone()
-            }).map_err(|_| Error::ThreadSend)?;
+            })?;
             frames_written += 1;
             screen.blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
         }

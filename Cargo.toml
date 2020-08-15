@@ -33,6 +33,7 @@ wild = "2.0.4"
 natord = "1.0.9"
 quick-error = "1.2.3"
 dunce = "1.0.1"
+crossbeam-channel = "0.4.3"
 
 [dependencies.ffmpeg]
 git = "https://github.com/kornelski/rust-ffmpeg"

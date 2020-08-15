@@ -38,4 +38,16 @@ quick_error! {
     }
 }
 
-pub type CatResult<T> = Result<T, Error>;
+pub type CatResult<T, E = Error> = Result<T, E>;
+
+impl<T> From<crossbeam_channel::SendError<T>> for Error {
+    fn from(_: crossbeam_channel::SendError<T>) -> Self {
+        Self::ThreadSend
+    }
+}
+
+impl From<crossbeam_channel::RecvError> for Error {
+    fn from(_: crossbeam_channel::RecvError) -> Self {
+        Self::Aborted
+    }
+}
