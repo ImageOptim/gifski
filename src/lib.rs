@@ -107,12 +107,24 @@ trait Encoder {
     }
 }
 
+/// Frame before quantization
+struct DiffMessage {
+    /// 1..
+    ordinal_frame_number: usize,
+    image: ImgVec<RGBA8>,
+    importance_map: Vec<u8>,
+    dispose: gif::DisposalMethod,
+    pts: f64,
+}
+
+/// Frame post quantization
 struct FrameMessage {
     /// 1..
     ordinal_frame_number: usize,
     frame: Arc<GIFFrame>,
     pts: f64,
 }
+
 
 /// Start new encoding
 ///
@@ -304,10 +316,10 @@ impl Writer {
             // loop to report skipped frames too
             while n_done < ordinal_frame_number {
                 n_done += 1;
-            if !reporter.increase() {
-                return Err(Error::Aborted.into());
+                if !reporter.increase() {
+                    return Err(Error::Aborted.into());
+                }
             }
-        }
         }
         enc.finish()?;
         Ok(())
@@ -343,42 +355,36 @@ impl Writer {
     }
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let (write_queue, write_queue_iter) = crossbeam_channel::bounded(4);
-        let queue_iter = self.queue_iter.take().expect("queue");
+        let decode_queue_recv = self.queue_iter.take().expect("queue");
+        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(4);
         let settings = self.settings;
-        let make_thread = thread::spawn(move || {
-            Self::make_frames(queue_iter, write_queue, &settings)
+        let diff_thread = thread::spawn(move || {
+            Self::make_diffs(decode_queue_recv, quant_queue, &settings)
         });
-        Self::write_frames(write_queue_iter, encoder, &self.settings, reporter)?;
-        make_thread.join().map_err(|_| Error::ThreadSend)??;
+        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(4);
+        let quant_thread = thread::spawn(move || {
+            Self::quantize_frames(quant_queue_recv, write_queue, &settings)
+        });
+        Self::write_frames(write_queue_recv, encoder, &self.settings, reporter)?;
+        diff_thread.join().map_err(|_| Error::ThreadSend)??;
+        quant_thread.join().map_err(|_| Error::ThreadSend)??;
         Ok(())
     }
 
-    fn make_frames(mut decode_iter: OrdQueueIter<DecodedImage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
-        let mut screen = None;
-        let mut next_frame = decode_iter.next().transpose()?;
+    fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, _settings: &Settings) -> CatResult<()> {
+        let mut next_frame = inputs.next().transpose()?;
 
-        let mut importance_map = match &next_frame {
-            Some((next_frame, _)) => {
-                vec![255_u8; next_frame.width() * next_frame.height()]
-            },
-            None => {
-                return Err(Error::NoFrames)
-            },
-        };
-
-        let mut previous_frame_dispose = gif::DisposalMethod::Background;
-        let mut frames_written = 0;
         let mut ordinal_frame_number = 0;
         while let Some((image, pts)) = {
             // that's not the while loop, that block gets the next element
             let curr_frame = next_frame.take();
-            next_frame = decode_iter.next().transpose()?;
+            next_frame = inputs.next().transpose()?;
             curr_frame
         } {
             ordinal_frame_number += 1;
+
             let mut dispose = gif::DisposalMethod::Keep;
-            if let Some((ref next, _)) = next_frame {
+            let importance_map = if let Some((next, _)) = &next_frame {
                 if next.width() != image.width() || next.height() != image.height() {
                     return Err(Error::WrongSize(format!("Frame {} has wrong size ({}×{}, expected {}×{})", ordinal_frame_number,
                         next.width(), next.height(), image.width(), image.height())));
@@ -389,7 +395,7 @@ impl Writer {
                     continue;
                 }
 
-                importance_map.clear();
+                let mut importance_map = Vec::with_capacity(image.width() * image.height());
                 importance_map.extend(next.rows().zip(image.rows()).flat_map(|(n, curr)| n.iter().copied().zip(curr.iter().copied())).map(|(n, curr)| {
                     if n.a < curr.a {
                         dispose = gif::DisposalMethod::Background;
@@ -398,10 +404,40 @@ impl Writer {
                     // but pixels that will stay unchanged should have higher quality
                     255 - (colordiff(n, curr) / (255 * 255 * 6 / 170)) as u8
                 }));
+                importance_map
             } else {
                 // Last frame should reset to background to avoid breaking transparent looped anims
                 dispose = gif::DisposalMethod::Background;
+                // Dunno? Maybe compare with the first frame?
+                vec![255; image.width() * image.height()]
             };
+
+            quant_queue.send(DiffMessage {
+                dispose,
+                importance_map,
+                ordinal_frame_number,
+                image,
+                pts,
+            })?;
+        }
+
+        Ok(())
+    }
+
+    fn quantize_frames(inputs: Receiver<DiffMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
+        let mut screen = None;
+        let next_frame = inputs.recv().map_err(|_| Error::NoFrames)?;
+
+        let mut next_frame = Some(next_frame);
+
+        let mut previous_frame_dispose = gif::DisposalMethod::Background;
+        let mut frames_written = 0;
+        while let Some(DiffMessage {image, pts, dispose, ordinal_frame_number, mut importance_map}) = {
+            // that's not the while loop, that block gets the next element
+            let curr_frame = next_frame.take();
+            next_frame = inputs.recv().ok();
+            curr_frame
+        } {
 
             let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
 
