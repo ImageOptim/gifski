@@ -223,6 +223,8 @@ fn get_video_decoder(_: &Path, _: source::Fps, _: Settings) -> BinResult<Box<dyn
 
 To enable video decoding you need to recompile gifski from source with:
 cargo build --release --features=video
+or
+cargo install gifski --features=video
 
 Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable.
