@@ -231,12 +231,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02efba560f227847cb41463a7395c514d127d4f74fff12ef0137fff1b84b96c4"
+dependencies = [
+ "color_quant",
+ "weezl",
+]
+
+[[package]]
 name = "gif-dispose"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "859994eec21f53c14561cddb2c84e211d100732d1997f87e80b80ac956502ceb"
 dependencies = [
- "gif",
+ "gif 0.10.3",
  "imgref",
  "rgb",
 ]
@@ -259,7 +269,7 @@ dependencies = [
  "crossbeam-channel",
  "dunce",
  "ffmpeg",
- "gif",
+ "gif 0.11.1",
  "gif-dispose",
  "gifsicle",
  "imagequant",
@@ -609,6 +619,12 @@ name = "wasi"
 version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
+
+[[package]]
+name = "weezl"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d2f24b6c3aa92fb33279566dbebf1cbe66b03a73f09aa69cf8cf14d2f9feb9"
 
 [[package]]
 name = "which"
