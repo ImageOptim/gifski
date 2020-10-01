@@ -354,9 +354,9 @@ dependencies = [
 
 [[package]]
 name = "lodepng"
-version = "3.2.1"
+version = "3.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d6face0280146377ad4959c588399014554f2875e953fdec135655ca769e1da"
+checksum = "b6eb909184223b89c76d66b80199b7ad4163aebb2519244e6ebac8ba74e67eab"
 dependencies = [
  "flate2",
  "libc",
