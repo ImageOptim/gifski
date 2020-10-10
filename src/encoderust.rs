@@ -22,13 +22,13 @@ impl<W: Write> RustEncoder<W> {
 
 impl<W: Write> Encoder for RustEncoder<W> {
     fn write_frame(&mut self, f: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
-        let GIFFrame {left, top, ref pal, ref image, dispose} = *f;
+        let GIFFrame {left, top, ref pal, ref image, screen_width, screen_height, dispose} = *f;
 
         let writer = &mut self.writer;
         let enc = match self.gif_enc {
             None => {
                 let w = writer.take().expect("writer");
-                let mut enc = gif::Encoder::new(w, image.width() as _, image.height() as _, &[])?;
+                let mut enc = gif::Encoder::new(w, screen_width, screen_height, &[])?;
                 if !settings.once {
                     enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
                 }

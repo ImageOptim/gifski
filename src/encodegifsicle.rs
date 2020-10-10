@@ -67,15 +67,15 @@ impl Encoder for Gifsicle<'_> {
         Ok(())
     }
     fn write_frame(&mut self, frame: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
-        let GIFFrame {left, top, ref pal, ref image, dispose} = *frame;
+        let GIFFrame {left, top, ref pal, screen_width, screen_height, ref image, dispose} = *frame;
 
         if self.gfs.is_null() {
             let gfs = unsafe {
                 self.gfs = gifsicle::Gif_NewStream();
                 self.gfs.as_mut().ok_or(Error::Gifsicle)?
             };
-            gfs.screen_width = image.width() as _;
-            gfs.screen_height = image.height() as _;
+            gfs.screen_width = screen_width;
+            gfs.screen_height = screen_height;
             gfs.loopcount = if settings.once { 1 } else { 0 }; // 0 is correct, -1 is not
             unsafe {
                 self.gif_writer = Gif_IncrementalWriteFileInit(gfs, &self.info, ptr::null_mut());

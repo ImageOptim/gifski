@@ -95,6 +95,8 @@ pub struct Writer {
 struct GIFFrame {
     left: u16,
     top: u16,
+    screen_width: u16,
+    screen_height: u16,
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     dispose: gif::DisposalMethod,
@@ -479,6 +481,9 @@ impl Writer {
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
 
+            let screen_width = screen.pixels.width() as u16;
+            let screen_height = screen.pixels.height() as u16;
+
             let (left, top, image8) = match trim_image(image8, &image8_pal, transparent_index, screen.pixels.as_ref()) {
                 Some(trimmed) => trimmed,
                 None => continue, // no pixels left
@@ -487,6 +492,8 @@ impl Writer {
             let frame = Arc::new(GIFFrame {
                 left,
                 top,
+                screen_width,
+                screen_height,
                 image: image8,
                 pal: image8_pal,
                 dispose,
