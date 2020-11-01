@@ -299,9 +299,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant"
-version = "2.12.5"
+version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed204263cc50c834608cc09afae352fbc7f408dd2eaac484914870f686c56a28"
+checksum = "c0b4956599cc38af9162b51fe752f73f3901b07139a6990b5dc63274868aae38"
 dependencies = [
  "imagequant-sys",
  "libc",
@@ -309,9 +309,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant-sys"
-version = "2.12.7"
+version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c717da7937fc233a4c1dd3e34a38f2b610b783e4556b0d44fafb939fdc8bc329"
+checksum = "b689fca169e3d72d737a058ac1b9ab608b336cb01f8e582af15fc8a06cae4d9f"
 dependencies = [
  "cc",
  "openmp-sys",
@@ -422,9 +422,9 @@ dependencies = [
 
 [[package]]
 name = "openmp-sys"
-version = "0.1.7"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d6ba0f6d9bcda83ebd8c1648715fb91f6ecd9303f240d55c2041c48222a9a13"
+checksum = "b43b5bed086d489e0e8210740656daed0a051214fbc60bcf19609c25394ffb8e"
 dependencies = [
  "cc",
 ]

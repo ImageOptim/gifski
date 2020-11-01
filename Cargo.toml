@@ -23,7 +23,7 @@ gifsicle = { version = "1.92.1", optional = true }
 clap = "2.33.3"
 gif = "0.11"
 gif-dispose = "3"
-imagequant = "2.12.5"
+imagequant = "2.13.0"
 imgref = "1.7.0"
 lodepng = "3.2.1"
 pbr = "1.0.3"
