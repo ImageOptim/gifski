@@ -116,7 +116,8 @@ struct DiffMessage {
     image: ImgVec<RGBA8>,
     importance_map: Vec<u8>,
     dispose: gif::DisposalMethod,
-    pts: f64,
+    /// presentation timestamp of the next frame (i.e. when this frame finishes being displayed)
+    end_pts: f64,
 }
 
 /// Frame post quantization
@@ -124,7 +125,7 @@ struct FrameMessage {
     /// 1..
     ordinal_frame_number: usize,
     frame: Arc<GIFFrame>,
-    pts: f64,
+    end_pts: f64,
 }
 
 
@@ -275,40 +276,14 @@ impl Writer {
     }
 
     fn write_frames(write_queue: Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let mut write_queue = write_queue
-            .into_iter()
-            .peekable();
-
-        let mut previous_frame_delay = 3;
-        let mut last_frame_delay_s = None;
         let mut pts_in_delay_units = 0_u64;
 
-        if let Some(&FrameMessage {pts, ..}) = write_queue.peek() {
-            // If the first frame doesn't start at 0 (or actually with 1/100th because that's min delay)
-            // interpret it as the delay between (looped) the last and the first frame.
-            if pts >= 1./100. {
-                last_frame_delay_s = Some(pts);
-                // Shift all frames by this pts so that frame 0 always starts at 0
-                pts_in_delay_units = (100. * pts).floor() as _;
-            }
-            }
-
         let mut n_done = 0;
-        while let Some(FrameMessage {frame, ordinal_frame_number, ..}) = write_queue.next() {
-            let next_frame = write_queue.peek();
-
-            // To convert PTS to delay it's necessary to know when the next frame is to be displayed
-            let delay = if let Some(next_pts) = next_frame.as_ref().map(|m| m.pts).or_else(|| {
-                    last_frame_delay_s.map(|s| pts_in_delay_units as f64 / 100.0 + s)
-                }) {
-                let next_pts_in_delay_units = (next_pts * 100.0).round() as u64;
-                next_pts_in_delay_units.saturating_sub(pts_in_delay_units).min(10000) as u16
-            } else {
-                // for the last frame just assume constant framerate
-                previous_frame_delay
-            };
+        for FrameMessage {frame, ordinal_frame_number, end_pts, ..} in write_queue {
+            let delay = ((end_pts * 100.0).round() as u64)
+                .saturating_sub(pts_in_delay_units)
+                .min(10000) as u16;
             pts_in_delay_units += u64::from(delay);
-            previous_frame_delay = delay;
 
             // skip frames with bad pts
             if delay != 0 {
@@ -376,13 +351,17 @@ impl Writer {
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, _settings: &Settings) -> CatResult<()> {
         let mut next_frame = inputs.next().transpose()?;
 
+        let first_frame_pts = next_frame.as_ref().map(|&(_, pts)| pts).unwrap_or_default();
+        let mut prev_frame_pts = 0.0;
+
         let mut ordinal_frame_number = 0;
-        while let Some((image, pts)) = {
-            // that's not the while loop, that block gets the next element
+        while let Some((image, mut pts)) = {
+            // this is not while loop's body, but a block that gets the next element
             let curr_frame = next_frame.take();
             next_frame = inputs.next().transpose()?;
             curr_frame
         } {
+            pts -= first_frame_pts;
             ordinal_frame_number += 1;
 
             let mut dispose = gif::DisposalMethod::Keep;
@@ -394,6 +373,7 @@ impl Writer {
 
                 // Skip identical frames
                 if next.as_ref() == image.as_ref() {
+                    prev_frame_pts = pts;
                     continue;
                 }
 
@@ -410,16 +390,28 @@ impl Writer {
             } else {
                 // Last frame should reset to background to avoid breaking transparent looped anims
                 dispose = gif::DisposalMethod::Background;
-                // Dunno? Maybe compare with the first frame?
                 vec![255; image.width() * image.height()]
             };
+
+            // conversion from pts to delay
+            let end_pts = if let Some((_, next_pts)) = next_frame {
+                next_pts - first_frame_pts
+            } else if first_frame_pts > 1./100. {
+                // this is gifski's weird rule that non-zero first-frame pts
+                // shifts the whole anim and is the delay of the last frame
+                pts + first_frame_pts
+            } else {
+                // otherwise assume steady framerate
+                pts + (pts - prev_frame_pts)
+            };
+            prev_frame_pts = pts;
 
             quant_queue.send(DiffMessage {
                 dispose,
                 importance_map,
                 ordinal_frame_number,
                 image,
-                pts,
+                end_pts,
             })?;
         }
 
@@ -434,13 +426,12 @@ impl Writer {
 
         let mut previous_frame_dispose = gif::DisposalMethod::Background;
         let mut frames_written = 0;
-        while let Some(DiffMessage {image, pts, dispose, ordinal_frame_number, mut importance_map}) = {
+        while let Some(DiffMessage {image, end_pts, dispose, ordinal_frame_number, mut importance_map}) = {
             // that's not the while loop, that block gets the next element
             let curr_frame = next_frame.take();
             next_frame = inputs.recv().ok();
             curr_frame
         } {
-
             let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
 
             let has_prev_frame = frames_written > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
@@ -501,7 +492,7 @@ impl Writer {
 
             write_queue.send(FrameMessage {
                 ordinal_frame_number,
-                pts,
+                end_pts,
                 frame: frame.clone()
             })?;
             frames_written += 1;
