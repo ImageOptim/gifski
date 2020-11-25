@@ -29,7 +29,9 @@ impl<W: Write> Encoder for RustEncoder<W> {
             None => {
                 let w = writer.take().expect("writer");
                 let mut enc = gif::Encoder::new(w, screen_width, screen_height, &[])?;
-                if !settings.once {
+                if settings.once {
+                    enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Finite(settings.loop_count)))?;
+                } else {
                     enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
                 }
                 self.gif_enc.get_or_insert(enc)
