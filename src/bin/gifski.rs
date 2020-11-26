@@ -156,10 +156,6 @@ fn bin_main() -> BinResult<()> {
         eprintln!("warning: web browsers support max 50 fps");
     }
 
-    if settings.loop_count > 0 {
-        settings.once = true;
-    }
-
     check_if_paths_exist(&frames)?;
 
     let mut decoder = if frames.len() == 1 {
