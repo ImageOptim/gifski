@@ -108,7 +108,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .arg(Arg::with_name("loop-count")
                             .long("loop-count")
-                            .help("Number of loops the Animation is shown")
+                            .help("Number of loops the animation is shown")
                             .takes_value(true)
                             .value_name("num"))
                         .get_matches_from(wild::args_os());
@@ -128,7 +128,7 @@ fn bin_main() -> BinResult<()> {
         quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
-        loop_count: parse_opt(matches.value_of("loop-count")).map_err(|_| "Invalid loop-count")?.unwrap_or(0),
+        loop_count: parse_opt(matches.value_of("loop-count")).map_err(|_| "Invalid loop count")?.unwrap_or(0),
     };
     let quiet = matches.is_present("quiet");
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
@@ -159,6 +159,7 @@ fn bin_main() -> BinResult<()> {
     if settings.loop_count > 0 {
         settings.once = true;
     }
+
     check_if_paths_exist(&frames)?;
 
     let mut decoder = if frames.len() == 1 {
