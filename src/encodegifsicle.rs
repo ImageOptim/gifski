@@ -77,7 +77,8 @@ impl Encoder for Gifsicle<'_> {
             gfs.screen_width = screen_width;
             gfs.screen_height = screen_height;
             // -1 is no looping, 0 is loop forever, else loop X number of times
-            gfs.loopcount = if settings.once { -1 } else { settings.loop_count.into() };
+            // not sure the else will work.. I need to get gif::Repeat copy-able first to test.
+            gfs.loopcount = if settings.repeat == gif::Repeat::Infinite { 0 } else { settings.repeat.into() };
             unsafe {
                 self.gif_writer = Gif_IncrementalWriteFileInit(gfs, &self.info, ptr::null_mut());
                 if self.gif_writer.is_null() {

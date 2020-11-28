@@ -40,24 +40,23 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use crossbeam_channel::{Sender, Receiver};
 use std::thread;
+use gif::Repeat;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
 
 /// Encoding settings for the `new()` function
 #[derive(Copy, Clone, Default)]
 pub struct Settings {
-    /// Resize to max this width if set.
+    /// Resize to max this width if non-0.
     pub width: Option<u32>,
-    /// Resize to max this height if width is set. Note that aspect ratio is not preserved.
+    /// Resize to max this height if width is non-0. Note that aspect ratio is not preserved.
     pub height: Option<u32>,
-    /// 1-100
+    /// 1-100, but useful range is 50-100. Recommended to set to 100.
     pub quality: u8,
-    /// If true, looping is disabled.
-    pub once: bool,
     /// Lower quality, but faster encode.
     pub fast: bool,
-    /// The loop count if once is false. 0 is forever.
-    pub loop_count: u16,
+    /// Sets the looping method for the image sequence.
+    pub repeat: gif::Repeat,
 }
 
 impl Settings {
