@@ -53,6 +53,10 @@ typedef struct GifskiSettings {
    * Lower quality, but faster encode.
    */
   bool fast;
+  /**
+   * Don't skip identical frames.
+   */
+  bool no_duplicate_skip;
 } GifskiSettings;
 
 enum GifskiError {
