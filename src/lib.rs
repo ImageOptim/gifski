@@ -56,6 +56,8 @@ pub struct Settings {
     pub once: bool,
     /// Lower quality, but faster encode
     pub fast: bool,
+    /// Skip identical frame
+    pub no_skip_duplicates: bool,
 }
 
 impl Settings {
@@ -372,7 +374,7 @@ impl Writer {
                 }
 
                 // Skip identical frames
-                if next.as_ref() == image.as_ref() {
+                if !_settings.no_skip_duplicates && next.as_ref() == image.as_ref() {
                     prev_frame_pts = pts;
                     continue;
                 }

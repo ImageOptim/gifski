@@ -49,6 +49,8 @@ pub struct GifskiSettings {
     pub once: bool,
     /// Lower quality, but faster encode.
     pub fast: bool,
+    /// Skip identical frame
+    pub no_skip_duplicates: bool,
 }
 
 #[repr(C)]
@@ -89,6 +91,7 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
         quality: settings.quality,
         once: settings.once,
         fast: settings.fast,
+        no_skip_duplicates: settings.no_skip_duplicates,
     };
 
     if let Ok((collector, writer)) = new(s) {

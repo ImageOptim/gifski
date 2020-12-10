@@ -100,6 +100,11 @@ fn bin_main() -> BinResult<()> {
                             .long("quiet")
                             .short("q")
                             .help("Do not display anything on standard output/console"))
+                        .arg(Arg::with_name("no-skip-duplicates")
+                            .long("no-skip-duplicates")
+                            .short("N")
+                            .help("No skiping duplicate frames")
+                            .empty_values(true))
                         .arg(Arg::with_name("FILE")
                             .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
@@ -123,6 +128,7 @@ fn bin_main() -> BinResult<()> {
         quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
         once: matches.is_present("once"),
         fast: matches.is_present("fast"),
+        no_skip_duplicates: matches.is_present("no-skip-duplicates"),
     };
     let quiet = matches.is_present("quiet");
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
