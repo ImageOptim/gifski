@@ -1,5 +1,5 @@
 use crate::error::CatResult;
-use crate::Encoder;
+use crate::{Encoder, Repeat};
 use crate::GIFFrame;
 use crate::Settings;
 use rgb::*;
@@ -25,13 +25,18 @@ impl<W: Write> Encoder for RustEncoder<W> {
         let GIFFrame {left, top, ref pal, ref image, screen_width, screen_height, dispose} = *f;
 
         let writer = &mut self.writer;
+
+        let repeat;
+        match settings.repeat {
+            Repeat::Infinite => repeat = gif::Repeat::Infinite,
+            Repeat::Finite(x) => repeat = gif::Repeat::Finite(x),
+        }
+
         let enc = match self.gif_enc {
             None => {
                 let w = writer.take().expect("writer");
                 let mut enc = gif::Encoder::new(w, screen_width, screen_height, &[])?;
-                if !settings.once {
-                    enc.write_extension(gif::ExtensionData::Repetitions(gif::Repeat::Infinite))?;
-                }
+                enc.write_extension(gif::ExtensionData::Repetitions(repeat))?;
                 self.gif_enc.get_or_insert(enc)
             },
             Some(ref mut enc) => enc,

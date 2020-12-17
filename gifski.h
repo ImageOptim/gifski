@@ -53,6 +53,10 @@ typedef struct GifskiSettings {
    * Lower quality, but faster encode.
    */
   bool fast;
+  /**
+   * 0+, but useful range is 0-10. 0 is loop forever. Recommended to set to 0.
+   */
+  uint16_t loop_count;
 } GifskiSettings;
 
 enum GifskiError {
