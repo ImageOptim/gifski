@@ -1,6 +1,6 @@
 #[macro_use] extern crate clap;
 
-use gifski::Settings;
+use gifski::{Settings, Repeat};
 use natord;
 use wild;
 
@@ -120,12 +120,20 @@ fn bin_main() -> BinResult<()> {
     let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
     let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;
     let height = parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?;
+    let repeat_int = parse_opt(matches.value_of("repeat")).map_err(|_| "Invalid repeat count")?.unwrap_or(0) as i16;
+    let repeat;
+    match repeat_int {
+        -1 => repeat = Repeat::Finite(0),
+        0 => repeat = Repeat::Infinite,
+        _ => repeat = Repeat::Finite(repeat_int as u16),
+    }
+
     let settings = Settings {
         width,
         height,
         quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
         fast: matches.is_present("fast"),
-        repeat: parse_opt(matches.value_of("repeat")).map_err(|_| "Invalid repeat count")?.unwrap_or(0),
+        repeat,
     };
     let quiet = matches.is_present("quiet");
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;

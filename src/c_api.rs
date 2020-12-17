@@ -88,7 +88,7 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
         height: if settings.height > 0 { Some(settings.height) } else { None },
         quality: settings.quality,
         fast: settings.fast,
-        repeat: if settings.repeat == -1 { gif::Repeat::Finite(0) } else if settings.repeat == 0 { gif::Repeat::Infinite } else { gif::Repeat::Finite(settings.repeat as u16) },
+        repeat: if settings.repeat == -1 { Repeat::Finite(0) } else if settings.repeat == 0 { Repeat::Infinite } else { Repeat::Finite(settings.repeat as u16) },
     };
 
     if let Ok((collector, writer)) = new(s) {
