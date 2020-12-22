@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "gif-dispose"
-version = "3.0.0"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3415630fa303c4deecd014fa68a6cfbf1099e4df5b93e3e7a49b7e139278f469"
+checksum = "2f39dbde95816499d29336d01c6f8862367f70d57ee444511168cc035681e239"
 dependencies = [
  "gif",
  "imgref",
