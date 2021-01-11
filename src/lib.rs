@@ -468,10 +468,13 @@ impl Writer {
                         }
                     });
             }
-            previous_frame_dispose = dispose;
+
+            let screen_width = screen.pixels.width() as u16;
+            let screen_height = screen.pixels.height() as u16;
+            let mut screen_after_dispose = screen.dispose();
 
             let (image8, image8_pal) = {
-                let bg = if has_prev_frame { Some(screen.pixels.as_ref()) } else { None };
+                let bg = if has_prev_frame { Some(screen_after_dispose.pixels()) } else { None };
                 Self::quantize(image.as_ref(), &importance_map, bg, settings)?
             };
 
@@ -479,13 +482,12 @@ impl Writer {
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
 
-            let screen_width = screen.pixels.width() as u16;
-            let screen_height = screen.pixels.height() as u16;
-
-            let (left, top, image8) = match trim_image(image8, &image8_pal, transparent_index, screen.pixels.as_ref()) {
+            let (left, top, image8) = match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
                 Some(trimmed) => trimmed,
                 None => continue, // no pixels left
             };
+
+            previous_frame_dispose = dispose;
 
             let frame = Arc::new(GIFFrame {
                 left,
@@ -503,7 +505,7 @@ impl Writer {
                 frame: frame.clone()
             })?;
             frames_written += 1;
-            screen.blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
+            screen_after_dispose.then_blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
         }
 
         Ok(())
