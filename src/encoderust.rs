@@ -3,7 +3,6 @@ use crate::{Encoder, Repeat};
 use crate::GIFFrame;
 use crate::Settings;
 use rgb::*;
-use std::borrow::Cow;
 use std::io::Write;
 
 pub(crate) struct RustEncoder<W: Write> {
@@ -21,8 +20,8 @@ impl<W: Write> RustEncoder<W> {
 }
 
 impl<W: Write> Encoder for RustEncoder<W> {
-    fn write_frame(&mut self, f: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
-        let GIFFrame {left, top, ref pal, ref image, screen_width, screen_height, dispose} = *f;
+    fn write_frame(&mut self, f: GIFFrame, delay: u16, settings: &Settings) -> CatResult<()> {
+        let GIFFrame {left, top, ref pal, image, screen_width, screen_height, dispose} = f;
 
         let writer = &mut self.writer;
 
@@ -42,11 +41,18 @@ impl<W: Write> Encoder for RustEncoder<W> {
             Some(ref mut enc) => enc,
         };
 
+        let (mut buffer, width, height) = image.into_contiguous_buf();
+
         let mut transparent_index = None;
         let mut pal_rgb = Vec::with_capacity(3 * pal.len());
         for (i, p) in pal.iter().enumerate() {
             if p.a == 0 {
-                transparent_index = Some(i as u8);
+                let new_index = i as u8;
+                if let Some(old_index) = transparent_index {
+                    buffer.iter_mut().filter(|px| **px == new_index).for_each(|px| *px = old_index);
+                } else {
+                    transparent_index = Some(new_index);
+                }
             }
             pal_rgb.extend_from_slice([p.rgb()].as_bytes());
         }
@@ -58,11 +64,11 @@ impl<W: Write> Encoder for RustEncoder<W> {
             needs_user_input: false,
             top,
             left,
-            width: image.width() as u16,
-            height: image.height() as u16,
+            width: width as u16,
+            height: height as u16,
             interlaced: false,
             palette: Some(pal_rgb),
-            buffer: Cow::Borrowed(image.buf()),
+            buffer: buffer.into(),
         })?;
         Ok(())
     }

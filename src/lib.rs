@@ -37,7 +37,6 @@ mod encodegifsicle;
 
 use std::io::prelude::*;
 use std::path::PathBuf;
-use std::sync::Arc;
 use crossbeam_channel::{Sender, Receiver};
 use std::thread;
 
@@ -110,7 +109,7 @@ struct GIFFrame {
 }
 
 trait Encoder {
-    fn write_frame(&mut self, frame: &GIFFrame, delay: u16, settings: &Settings) -> CatResult<()>;
+    fn write_frame(&mut self, frame: GIFFrame, delay: u16, settings: &Settings) -> CatResult<()>;
     fn finish(&mut self) -> CatResult<()> {
         Ok(())
     }
@@ -131,7 +130,7 @@ struct DiffMessage {
 struct FrameMessage {
     /// 1..
     ordinal_frame_number: usize,
-    frame: Arc<GIFFrame>,
+    frame: GIFFrame,
     end_pts: f64,
 }
 
@@ -294,7 +293,7 @@ impl Writer {
 
             // skip frames with bad pts
             if delay != 0 {
-                enc.write_frame(&frame, delay, settings)?;
+                enc.write_frame(frame, delay, settings)?;
             }
 
             // loop to report skipped frames too
@@ -489,7 +488,7 @@ impl Writer {
 
             previous_frame_dispose = dispose;
 
-            let frame = Arc::new(GIFFrame {
+            let frame = GIFFrame {
                 left,
                 top,
                 screen_width,
@@ -497,15 +496,16 @@ impl Writer {
                 image: image8,
                 pal: image8_pal,
                 dispose,
-            });
+            };
+
+            screen_after_dispose.then_blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
 
             write_queue.send(FrameMessage {
                 ordinal_frame_number,
                 end_pts,
-                frame: frame.clone()
+                frame,
             })?;
             frames_written += 1;
-            screen_after_dispose.then_blit(Some(&frame.pal), dispose, left, top as _, frame.image.as_ref(), transparent_index)?;
         }
 
         Ok(())
