@@ -288,7 +288,7 @@ impl Writer {
         for FrameMessage {frame, ordinal_frame_number, end_pts, ..} in write_queue {
             let delay = ((end_pts * 100.0).round() as u64)
                 .saturating_sub(pts_in_delay_units)
-                .min(10000) as u16;
+                .min(30000) as u16;
             pts_in_delay_units += u64::from(delay);
 
             // skip frames with bad pts
