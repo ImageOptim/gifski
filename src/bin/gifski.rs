@@ -172,16 +172,18 @@ fn bin_main() -> BinResult<()> {
         Box::new(png::Lodecoder::new(frames, &rate))
     };
 
-    let mut progress: Box<dyn ProgressReporter> = if quiet {
-        Box::new(NoProgress {})
+    let mut pb;
+    let mut nopb = NoProgress {};
+    let progress: &mut dyn ProgressReporter = if quiet {
+        &mut nopb
     } else {
-        let mut pb = ProgressBar::new(decoder.total_frames());
+        pb = ProgressBar::new(decoder.total_frames());
         pb.show_speed = false;
         pb.show_percent = false;
         pb.format(" #_. ");
         pb.message("Frame ");
         pb.set_max_refresh_rate(Some(Duration::from_millis(250)));
-        Box::new(pb)
+        &mut pb
     };
 
     let (collector, writer) = gifski::new(settings)?;

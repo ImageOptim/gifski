@@ -318,23 +318,13 @@ impl Writer {
 
         #[cfg(feature = "gifsicle")]
         {
-            let encoder: &mut dyn Encoder;
-            let mut gifsicle;
-            let mut rustgif;
             if self.settings.quality < 100 {
                 let loss = (100 - self.settings.quality as u32) * 6;
-                gifsicle = encodegifsicle::Gifsicle::new(loss, &mut writer);
-                encoder = &mut gifsicle;
-            } else {
-                rustgif = encoderust::RustEncoder::new(writer);
-                encoder = &mut rustgif;
+                let mut gifsicle = encodegifsicle::Gifsicle::new(loss, &mut writer);
+                return self.write_with_encoder(&mut gifsicle, reporter);
             }
-            self.write_with_encoder(encoder, reporter)
         }
-        #[cfg(not(feature = "gifsicle"))]
-        {
-            self.write_with_encoder(&mut encoderust::RustEncoder::new(writer), reporter)
-        }
+        self.write_with_encoder(&mut encoderust::RustEncoder::new(writer), reporter)
     }
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
