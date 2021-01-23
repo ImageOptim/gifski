@@ -1,5 +1,6 @@
 #[macro_use] extern crate clap;
 
+use std::ffi::OsStr;
 use gifski::{Settings, Repeat};
 use natord;
 use wild;
@@ -17,6 +18,8 @@ pub type BinResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 use clap::{App, AppSettings, Arg};
 
 use std::env;
+use std::fmt;
+use std::io;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -48,7 +51,7 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::with_name("output")
                             .long("output")
                             .short("o")
-                            .help("Destination file to write to")
+                            .help("Destination file to write to; \"-\" means stdout")
                             .empty_values(false)
                             .takes_value(true)
                             .value_name("a.gif")
@@ -117,7 +120,7 @@ fn bin_main() -> BinResult<()> {
     }
     let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
 
-    let output_path = Path::new(matches.value_of_os("output").ok_or("Missing output")?);
+    let output_path = DestPath::new(matches.value_of_os("output").ok_or("Missing output")?);
     let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;
     let height = parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?;
     let repeat_int = parse_opt(matches.value_of("repeat")).map_err(|_| "Invalid repeat count")?.unwrap_or(0) as i16;
@@ -135,7 +138,7 @@ fn bin_main() -> BinResult<()> {
         fast: matches.is_present("fast"),
         repeat,
     };
-    let quiet = matches.is_present("quiet");
+    let quiet = matches.is_present("quiet") || matches!(output_path, DestPath::Stdout);
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
     let speed: f32 = matches.value_of("fast-forward").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
 
@@ -191,14 +194,18 @@ fn bin_main() -> BinResult<()> {
         decoder.collect(collector)
     });
 
-    let abs_path = dunce::canonicalize(&output_path);
-    let abs_path = abs_path.as_ref().map(|p| p.as_path()).unwrap_or(output_path);
-
-    let file = File::create(output_path)
-        .map_err(|e| format!("Can't write to {}: {}", abs_path.display(), e))?;
-    writer.write(file, &mut *progress)?;
+    match output_path {
+        DestPath::Path(p) => {
+            let file = File::create(p)
+                .map_err(|e| format!("Can't write to {}: {}", p.display(), e))?;
+            writer.write(file, progress)?;
+        },
+        DestPath::Stdout => {
+            writer.write(io::stdout().lock(), progress)?;
+        },
+    };
     decode_thread.join().map_err(|_| "thread died?")??;
-    progress.done(&format!("gifski created {}", abs_path.display()));
+    progress.done(&format!("gifski created {}", output_path));
 
     Ok(())
 }
@@ -222,6 +229,33 @@ fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<
     match s {
         Some(s) => Ok(Some(s.parse()?)),
         None => Ok(None),
+    }
+}
+
+enum DestPath<'a> {
+    Path(&'a Path),
+    Stdout,
+}
+
+impl<'a> DestPath<'a> {
+    pub fn new(path: &'a OsStr) -> Self {
+        if path == "-" {
+            Self::Stdout
+        } else {
+            Self::Path(Path::new(path))
+        }
+    }
+}
+
+impl fmt::Display for DestPath<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Path(orig_path) => {
+                let abs_path = dunce::canonicalize(orig_path);
+                abs_path.as_ref().map(|p| p.as_path()).unwrap_or(orig_path).display().fmt(f)
+            },
+            Self::Stdout => f.write_str("stdout"),
+        }
     }
 }
 
