@@ -13,7 +13,7 @@ use crate::source::*;
 
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
-pub type BinResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
 use clap::{App, AppSettings, Arg};
 
@@ -189,9 +189,9 @@ fn bin_main() -> BinResult<()> {
         &mut pb
     };
 
-    let (collector, writer) = gifski::new(settings)?;
+    let (mut collector, writer) = gifski::new(settings)?;
     let decode_thread = thread::spawn(move || {
-        decoder.collect(collector)
+        decoder.collect(&mut collector)
     });
 
     match output_path {
