@@ -190,9 +190,9 @@ fn bin_main() -> BinResult<()> {
     };
 
     let (mut collector, writer) = gifski::new(settings)?;
-    let decode_thread = thread::spawn(move || {
+    let decode_thread = thread::Builder::new().name("decode".into()).spawn(move || {
         decoder.collect(&mut collector)
-    });
+    })?;
 
     match output_path {
         DestPath::Path(p) => {
