@@ -445,14 +445,11 @@ fn cant_write_after_finish() {
         repeat: -1,
     })};
     assert!(!g.is_null());
-    let mut called = false;
-    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
-        let called = user_data as *mut bool;
-        *called = true;
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, _: *mut c_void) -> c_int {
         0
     }
     unsafe {
-        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), (&mut called) as *mut _ as _));
+        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 0 as _));
         assert_eq!(GifskiError::OTHER, gifski_finish(g));
     }
 }
@@ -515,7 +512,7 @@ fn c_incomplete() {
     }
     unsafe {
         gifski_set_progress_callback(g, cb, ptr::null_mut());
-        assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA::new(0, 0, 0, 0), 5.0));
+        assert_eq!(GifskiError::OK, gifski_add_frame_rgba(g, 0, 1, 1, &RGBA8::new(0, 0, 0, 0), 5.0));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 1, 1, 3, 1, &RGB::new(0, 0, 0), 5.0));
         assert_eq!(GifskiError::OK, gifski_finish(g));
     }
