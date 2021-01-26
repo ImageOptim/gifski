@@ -471,9 +471,14 @@ impl Writer {
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
 
-            let (left, top, image8) = match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
-                Some(trimmed) => trimmed,
-                None => continue, // no pixels left
+            let (left, top, image8) = if frames_written > 0 && next_frame.is_some() {
+                match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
+                    Some(trimmed) => trimmed,
+                    None => continue, // no pixels left
+                }
+            } else {
+                // must keep first and last frame
+                (0, 0, image8)
             };
 
             previous_frame_dispose = dispose;
