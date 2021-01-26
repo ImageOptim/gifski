@@ -290,9 +290,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant"
-version = "3.0.0+sys2.13.1"
+version = "3.0.2+sys2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b0c39918d2022935c3ef22297057d137d209d4050503aac2c8ee56af78e15c"
+checksum = "1831bcabd0ac085dec3ca13133c738d93aca34858c42bf79b5bf95f1ba4feed9"
 dependencies = [
  "imagequant-sys",
  "libc",
@@ -301,9 +301,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant-sys"
-version = "3.0.0+sys2.13.1"
+version = "3.0.1+sys2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3b211761b589809c7a536dc67a703a59b2303f93ac60fe90b6fecc53f41a924"
+checksum = "4151d3766dea5efacb86c5a94ad2bc518747c4e659787415a159dc8d7a211fee"
 dependencies = [
  "bitflags",
  "cc",
