@@ -329,12 +329,12 @@ impl Writer {
 
     fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let decode_queue_recv = self.queue_iter.take().expect("queue");
-        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(4);
+        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(8);
         let settings = self.settings;
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
             Self::make_diffs(decode_queue_recv, quant_queue, &settings)
         })?;
-        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(4);
+        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(8);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
             Self::quantize_frames(quant_queue_recv, write_queue, &settings)
         })?;

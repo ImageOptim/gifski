@@ -223,9 +223,9 @@ dependencies = [
 
 [[package]]
 name = "gif-dispose"
-version = "3.1.0"
+version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3449e90a378cbf471a215eedfb74fa1c18e4d221aaad9a9a2b1c52ed72ff2b35"
+checksum = "243e0347e8f4384181cb12069d87b9dae021c41bdaada7bd0d6743ad6d95c1d7"
 dependencies = [
  "gif",
  "imgref",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.2.7"
+version = "1.2.8"
 dependencies = [
  "clap",
  "crossbeam-channel",
