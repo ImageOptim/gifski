@@ -419,8 +419,8 @@ impl Writer {
         let next_frame = inputs.recv().map_err(|_| Error::NoFrames)?;
 
         let mut next_frame = Some(next_frame);
+        let mut prev_frame: Option<ImgVec<_>> = None;
 
-        let mut previous_frame_dispose = gif::DisposalMethod::Background;
         let mut frames_written = 0;
         while let Some(DiffMessage {image, end_pts, dispose, ordinal_frame_number, mut importance_map}) = {
             // that's not the while loop, that block gets the next element
@@ -430,14 +430,12 @@ impl Writer {
         } {
             let screen = screen.get_or_insert_with(|| gif_dispose::Screen::new(image.width(), image.height(), RGBA8::new(0, 0, 0, 0), None));
 
-            let has_prev_frame = frames_written > 0 && previous_frame_dispose == gif::DisposalMethod::Keep;
-            if has_prev_frame {
+            if let Some(prev_frame) = &prev_frame {
                 let q = 100 - u32::from(settings.color_quality());
                 let min_diff = 80 + q * q;
-                debug_assert_eq!(image.width(), screen.pixels.width());
                 importance_map
                     .chunks_exact_mut(image.width())
-                    .zip(screen.pixels.rows().zip(image.rows()))
+                    .zip(prev_frame.rows().zip(image.rows()))
                     .flat_map(|(imp, (bg, px))| {
                         imp.iter_mut().zip(bg.iter().copied().zip(px.iter().copied()))
                     })
@@ -463,11 +461,9 @@ impl Writer {
             let mut screen_after_dispose = screen.dispose();
 
             let (image8, image8_pal) = {
-                let bg = if has_prev_frame { Some(screen_after_dispose.pixels()) } else { None };
+                let bg = if frames_written > 0 { Some(screen_after_dispose.pixels()) } else { None };
                 Self::quantize(image.as_ref(), &importance_map, bg, settings)?
             };
-
-            drop(image);
 
             let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
 
@@ -480,8 +476,6 @@ impl Writer {
                 // must keep first and last frame
                 (0, 0, image8)
             };
-
-            previous_frame_dispose = dispose;
 
             let frame = GIFFrame {
                 left,
@@ -501,6 +495,7 @@ impl Writer {
                 frame,
             })?;
             frames_written += 1;
+            prev_frame = if dispose == gif::DisposalMethod::Keep { Some(image) } else { None };
         }
 
         Ok(())
