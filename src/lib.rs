@@ -284,12 +284,12 @@ impl Writer {
         Ok((liq, res, img))
     }
 
-    fn remap(liq: Attributes, mut res: QuantizationResult, mut img: Image<'static>, background: Option<ImgRef<'_, RGBA8>>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn remap(liq: Attributes, mut res: QuantizationResult, mut img: Image<'static>, background: Option<ImgRef<'_, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         if let Some(bg) = background {
             img.set_background(liq.new_image_stride(bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
 
-        res.set_dithering_level(0.5);
+        res.set_dithering_level(settings.quality as f32 / 150.0);
 
         let (pal, pal_img) = res.remapped(&mut img)?;
         debug_assert_eq!(img.width() * img.height(), pal_img.len());
@@ -357,7 +357,7 @@ impl Writer {
         })?;
         let (write_queue, write_queue_recv) = crossbeam_channel::bounded(6);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
-            Self::remap_frames(remap_queue_recv, write_queue)
+            Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;
         Self::write_frames(write_queue_recv, encoder, &self.settings, reporter)?;
         diff_thread.join().map_err(|_| Error::ThreadSend)??;
@@ -486,7 +486,7 @@ impl Writer {
         Ok(())
     }
 
-    fn remap_frames(inputs: Receiver<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
+    fn remap_frames(inputs: Receiver<RemapMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
         let next_frame = inputs.recv().map_err(|_| Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(next_frame.liq_image.width(), next_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
@@ -505,7 +505,7 @@ impl Writer {
 
             let (mut image8, mut image8_pal) = {
                 let bg = if !first_frame { Some(screen_after_dispose.pixels()) } else { None };
-                Self::remap(liq, remap, liq_image, bg)?
+                Self::remap(liq, remap, liq_image, bg, settings)?
             };
 
             // Palette may have multiple transparent indices :(
