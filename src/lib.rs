@@ -106,6 +106,7 @@ struct GIFFrame {
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     dispose: gif::DisposalMethod,
+    transparent_index: Option<u8>,
 }
 
 trait Encoder {
@@ -502,12 +503,24 @@ impl Writer {
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
 
-            let (image8, image8_pal) = {
+            let (mut image8, mut image8_pal) = {
                 let bg = if !first_frame { Some(screen_after_dispose.pixels()) } else { None };
                 Self::remap(liq, remap, liq_image, bg)?
             };
 
-            let transparent_index = image8_pal.iter().position(|p| p.a == 0).map(|i| i as u8);
+            // Palette may have multiple transparent indices :(
+            let mut transparent_index = None;
+            for (i, p) in image8_pal.iter_mut().enumerate() {
+                if p.a <= 128 {
+                    p.a = 0;
+                    let new_index = i as u8;
+                    if let Some(old_index) = transparent_index {
+                        image8.pixels_mut().filter(|px| **px == new_index).for_each(|px| *px = old_index);
+                    } else {
+                        transparent_index = Some(new_index);
+                    }
+                }
+            }
 
             let (left, top, image8) = if !first_frame && next_frame.is_some() {
                 match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
@@ -526,6 +539,7 @@ impl Writer {
                 screen_height,
                 image: image8,
                 pal: image8_pal,
+                transparent_index,
                 dispose,
             };
 
