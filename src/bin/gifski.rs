@@ -265,6 +265,7 @@ fn get_video_decoder(path: &Path, fps: source::Fps, settings: Settings) -> BinRe
 }
 
 #[cfg(not(feature = "video"))]
+#[cold]
 fn get_video_decoder(_: &Path, _: source::Fps, _: Settings) -> BinResult<Box<dyn Source + Send>> {
     Err(r"Video support is permanently disabled in this executable.
 
