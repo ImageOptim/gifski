@@ -279,7 +279,9 @@ impl Writer {
         liq.set_quality(0, quality);
         let mut img = liq.new_image_stride_copy(image.buf(), image.width(), image.height(), image.stride(), 0.).expect("stridecopy");
         img.set_importance_map(importance_map).expect("immap");
-        img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
+        if has_prev_frame {
+            img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
+        }
         let res = liq.quantize(&img).expect("quantize");
         Ok((liq, res, img))
     }
@@ -473,7 +475,7 @@ impl Writer {
                         }
                     });
             }
-            let (liq, remap, liq_image) = Self::quantize(image.as_ref(), &importance_map, prev_frame.is_some(), settings)?;
+            let (liq, remap, liq_image) = Self::quantize(image.as_ref(), &importance_map, ordinal_frame_number > 1, settings)?;
             remap_queue.send(RemapMessage {
                 ordinal_frame_number,
                 end_pts,
