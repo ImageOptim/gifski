@@ -369,11 +369,12 @@ impl Writer {
     }
 
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, _settings: &Settings) -> CatResult<()> {
-        let mut next_frame = inputs.next().transpose()?;
-
-        let first_frame_pts = next_frame.as_ref().map(|&(_, pts)| pts).unwrap_or_default();
+        let (first_frame, first_frame_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
         let mut prev_frame_pts = 0.0;
 
+        let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
+
+        let mut next_frame = Some((first_frame, first_frame_pts));
         let mut ordinal_frame_number = 0;
         while let Some((image, mut pts)) = {
             // this is not while loop's body, but a block that gets the next element
@@ -409,7 +410,12 @@ impl Writer {
                 importance_map
             } else {
                 // Last frame should reset to background to avoid breaking transparent looped anims
-                dispose = gif::DisposalMethod::Background;
+                if first_frame_has_transparency {
+                    dispose = gif::DisposalMethod::Background;
+                } else {
+                    // Workaround for Preview.app in macOS Big Oof
+                    dispose = gif::DisposalMethod::Keep;
+                }
                 vec![255; image.width() * image.height()]
             };
 
