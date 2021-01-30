@@ -65,19 +65,19 @@ pub struct Settings {
 }
 
 impl Settings {
-    #[cfg(not(feature = "gifsicle"))]
+    /// quality is used in other places, like gifsicle or frame differences,
+    /// and it's better to lower quality there before ruining quantization
     pub(crate) fn color_quality(&self) -> u8 {
-        self.quality
-    }
-
-    #[cfg(feature = "gifsicle")]
-    pub(crate) fn color_quality(&self) -> u8 {
-        (self.quality * 2).min(100)
+        (self.quality as u16 * 4 / 3).min(100) as u8
     }
 
     /// add_frame is going to resize the images to this size.
     pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
         dimensions_for_image((width, height), (self.width, self.height))
+    }
+
+    pub(crate) fn gifsicle_loss(&self) -> u32 {
+        (100./6. - self.quality as f32 / 6.).powf(1.75).ceil() as u32
     }
 }
 
@@ -337,8 +337,7 @@ impl Writer {
         #[cfg(feature = "gifsicle")]
         {
             if self.settings.quality < 100 {
-                let loss = (100 - self.settings.quality as u32) * 6;
-                let mut gifsicle = encodegifsicle::Gifsicle::new(loss, &mut writer);
+                let mut gifsicle = encodegifsicle::Gifsicle::new(self.settings.gifsicle_loss(), &mut writer);
                 return self.write_with_encoder(&mut gifsicle, reporter);
             }
         }

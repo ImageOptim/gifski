@@ -71,7 +71,7 @@ fn bin_main() -> BinResult<()> {
                             .long("fast-forward")
                             .help("Multiply speed of video by a factor\n(no effect when using PNG files as input)")
                             .empty_values(false)
-                            .value_name("num")
+                            .value_name("x")
                             .default_value("1"))
                         .arg(Arg::with_name("fast")
                             .long("fast")
