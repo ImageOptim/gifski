@@ -198,6 +198,8 @@ impl Collector {
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), presentation_timestamp)))
     }
 
+    #[allow(clippy::identity_op)]
+    #[allow(clippy::erasing_op)]
     fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
         let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
@@ -277,12 +279,12 @@ impl Writer {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality);
-        let mut img = liq.new_image_stride_copy(image.buf(), image.width(), image.height(), image.stride(), 0.).expect("stridecopy");
-        img.set_importance_map(importance_map).expect("immap");
+        let mut img = liq.new_image_stride_copy(image.buf(), image.width(), image.height(), image.stride(), 0.)?;
+        img.set_importance_map(importance_map)?;
         if has_prev_frame {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
         }
-        let res = liq.quantize(&img).expect("quantize");
+        let res = liq.quantize(&img)?;
         Ok((liq, res, img))
     }
 
@@ -318,7 +320,7 @@ impl Writer {
             while n_done < ordinal_frame_number {
                 n_done += 1;
                 if !reporter.increase() {
-                    return Err(Error::Aborted.into());
+                    return Err(Error::Aborted);
                 }
             }
         }

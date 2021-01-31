@@ -2,8 +2,6 @@
 
 use std::ffi::OsStr;
 use gifski::{Settings, Repeat};
-use natord;
-use wild;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
@@ -26,9 +24,9 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "video")]
-const VIDEO_FRAMES_ARG_HELP: &'static str = "one video file supported by FFmpeg, or multiple PNG image files";
+const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, or multiple PNG image files";
 #[cfg(not(feature = "video"))]
-const VIDEO_FRAMES_ARG_HELP: &'static str = "PNG image files";
+const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files";
 
 fn main() {
     if let Err(e) = bin_main() {
@@ -40,6 +38,7 @@ fn main() {
     }
 }
 
+#[allow(clippy::float_cmp)]
 fn bin_main() -> BinResult<()> {
      let matches = App::new(crate_name!())
                         .version(crate_version!())
@@ -118,7 +117,7 @@ fn bin_main() -> BinResult<()> {
     if !matches.is_present("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
-    let frames: Vec<_> = frames.into_iter().map(|s| PathBuf::from(s)).collect();
+    let frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
 
     let output_path = DestPath::new(matches.value_of_os("output").ok_or("Missing output")?);
     let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;

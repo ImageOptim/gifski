@@ -1,5 +1,3 @@
-use gif_dispose;
-use imagequant;
 use std::io;
 
 quick_error! {
