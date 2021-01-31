@@ -179,7 +179,7 @@ impl Collector {
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height), presentation_timestamp)))
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height)?, presentation_timestamp)))
     }
 
     /// Read and decode a PNG file from disk.
@@ -195,21 +195,21 @@ impl Collector {
         let image = lodepng::decode32_file(&path)
             .map_err(|err| Error::PNG(format!("Can't load {}: {}", path.display(), err)))?;
 
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height), presentation_timestamp)))
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height)?, presentation_timestamp)))
     }
 
     #[allow(clippy::identity_op)]
     #[allow(clippy::erasing_op)]
-    fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> ImgVec<RGBA8> {
+    fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
         let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
         if width != image.width() || height != image.height() {
             let (buf, img_width, img_height) = image.into_contiguous_buf();
             assert_eq!(buf.len(), img_width * img_height);
 
-            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA, resize::Type::Lanczos3);
+            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA, resize::Type::Lanczos3)?;
             let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
-            r.resize(buf.as_bytes(), dst.as_bytes_mut());
+            r.resize(buf.as_bytes(), dst.as_bytes_mut())?;
             image = ImgVec::new(dst, width, height)
         }
 
@@ -231,7 +231,7 @@ impl Collector {
                 }
             }
         }
-        image
+        Ok(image)
     }
 }
 

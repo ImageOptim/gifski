@@ -27,6 +27,7 @@ quick_error! {
         }
         WrongSize(msg: String) {
             display("{}", msg)
+            from(e: resize::Error) -> (e.to_string())
         }
         Quant(liq: imagequant::liq_error) {
             from()
