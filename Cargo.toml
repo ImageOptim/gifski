@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "1.3.3"
+version = "1.4.0"
 autobins = false
 edition = "2018"
 
