@@ -1,7 +1,7 @@
 use crate::error::*;
-use crate::{Encoder, Repeat};
 use crate::GIFFrame;
 use crate::Settings;
+use crate::{Encoder, Repeat};
 use gifsicle::*;
 use std::io::Write;
 use std::ptr;

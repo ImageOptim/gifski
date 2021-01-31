@@ -17,8 +17,8 @@ use clap::{App, AppSettings, Arg};
 
 use std::env;
 use std::fmt;
-use std::io;
 use std::fs::File;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -40,7 +40,7 @@ fn main() {
 
 #[allow(clippy::float_cmp)]
 fn bin_main() -> BinResult<()> {
-     let matches = App::new(crate_name!())
+    let matches = App::new(crate_name!())
                         .version(crate_version!())
                         .about("https://gif.ski by Kornel Lesiński")
                         .setting(AppSettings::UnifiedHelpMessage)
@@ -141,10 +141,7 @@ fn bin_main() -> BinResult<()> {
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
     let speed: f32 = matches.value_of("fast-forward").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
 
-    let rate = source::Fps {
-        speed,
-        fps,
-    };
+    let rate = source::Fps { speed, fps };
 
     if settings.quality < 20 {
         if settings.quality < 1 {

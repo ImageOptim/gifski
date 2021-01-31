@@ -17,7 +17,8 @@
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
-#[macro_use] extern crate quick_error;
+#[macro_use]
+extern crate quick_error;
 
 use imagequant::*;
 use imgref::*;
@@ -35,9 +36,9 @@ mod encoderust;
 #[cfg(feature = "gifsicle")]
 mod encodegifsicle;
 
+use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
 use std::path::PathBuf;
-use crossbeam_channel::{Sender, Receiver};
 use std::thread;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
@@ -146,7 +147,6 @@ struct FrameMessage {
     frame: GIFFrame,
 }
 
-
 /// Start new encoding
 ///
 /// Encoding is multi-threaded, and the `Collector` and `Writer`
@@ -240,7 +240,7 @@ impl Collector {
 fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>, Option<u32>)) -> (usize, usize) {
     match resize_to {
         (None, None) => {
-            let factor = (img_w * img_h + 800*600) / (800*600);
+            let factor = (img_w * img_h + 800 * 600) / (800 * 600);
             if factor > 1 {
                 (img_w / factor, img_h / factor)
             } else {
