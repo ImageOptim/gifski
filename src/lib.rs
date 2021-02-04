@@ -531,6 +531,12 @@ impl Writer {
                 }
             }
 
+            // Check that palette is fine and has no duplicate transparent indices
+            debug_assert!(matches!(image8_pal.len(), 1..=256));
+            debug_assert!(image8_pal.iter().enumerate().all(|(idx, color)| {
+                Some(idx as u8) == transparent_index || color.a > 128 || !image8.pixels().any(|px| px == idx as u8)
+            }));
+
             let (left, top, image8) = if !first_frame && next_frame.is_some() {
                 match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
