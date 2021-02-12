@@ -82,6 +82,17 @@ impl Settings {
     }
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            width: None, height: None,
+            quality: 100,
+            fast: false,
+            repeat: Repeat::Infinite,
+        }
+    }
+}
+
 /// Collect frames that will be encoded
 ///
 /// Note that writing will finish only when the collector is dropped.
