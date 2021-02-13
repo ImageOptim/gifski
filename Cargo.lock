@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.4.0"
+version = "1.4.0-alpha.1"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -292,9 +292,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant"
-version = "3.0.3+sys2.14.0"
+version = "3.0.4-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670a496b08ae806100367d0c3734ccf48562d8f3f1c61c2c6f13e6aca1ae2881"
+checksum = "1a83d3653c651207acb51e0a8b236599dca8a2cba521b1dc5ac440b87f3b15f0"
 dependencies = [
  "imagequant-sys",
  "libc",
@@ -303,9 +303,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant-sys"
-version = "3.0.3+sys2.14.0"
+version = "3.0.4-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3689df1fd74c4a1737ea60ba03a05105d37d0fc8e7ba3028e7e10f162939f8fd"
+checksum = "00316c5d399ab2bd961b8bf2b21b0d855a902191ff461a93f2a44abb59ef78f9"
 dependencies = [
  "bitflags",
  "cc",
@@ -403,9 +403,9 @@ dependencies = [
 
 [[package]]
 name = "openmp-sys"
-version = "1.0.0"
+version = "1.2.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b43b5bed086d489e0e8210740656daed0a051214fbc60bcf19609c25394ffb8e"
+checksum = "d913c9ec0492632dfb585cbdd6f3440509dea27bafba8945810bc9ed74621f97"
 dependencies = [
  "cc",
 ]
