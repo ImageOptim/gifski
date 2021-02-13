@@ -1,3 +1,4 @@
+use rgb::ComponentMap;
 use std::path::PathBuf;
 use imgref::ImgVec;
 use imgref::ImgRef;
@@ -23,7 +24,7 @@ fn n_frames() {
         for_each_frame(&out, |_, actual| {
             let expected = lodepng::decode32_file(frame_filename(n)).unwrap();
             let expected = ImgVec::new(expected.buffer, expected.width, expected.height);
-            assert_images_eq(expected.as_ref(), actual);
+            assert_images_eq(expected.as_ref(), actual, 0.15);
             n += 1;
         });
         assert_eq!(n, num_frames);
@@ -48,7 +49,7 @@ fn all_dupe_frames() {
     for_each_frame(&out, |frame, actual| {
         let expected = lodepng::decode32_file(frame_filename(1)).unwrap();
         let expected = ImgVec::new(expected.buffer, expected.width, expected.height);
-        assert_images_eq(expected.as_ref(), actual);
+        assert_images_eq(expected.as_ref(), actual, 0.);
         assert_eq!(frame.delay, 130);
         n += 1;
     });
@@ -73,7 +74,7 @@ fn all_but_one_dupe_frames() {
     for_each_frame(&out, |frame, actual| {
         let expected = lodepng::decode32_file(frame_filename(if n == 0 {0} else {1})).unwrap();
         let expected = ImgVec::new(expected.buffer, expected.width, expected.height);
-        assert_images_eq(expected.as_ref(), actual);
+        assert_images_eq(expected.as_ref(), actual, 0.07);
         assert_eq!(frame.delay, if n == 0 {120} else {2*10}); // 2*, because 1.2…1.3 + 1.3…1.4 (assumed fps)
         n += 1;
     });
@@ -97,6 +98,14 @@ fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(&gif::Frame, ImgRef<RG
 }
 
 #[track_caller]
-fn assert_images_eq(a: ImgRef<RGBA8>, b: ImgRef<RGBA8>) {
-    assert!(a == b);
+fn assert_images_eq(a: ImgRef<RGBA8>, b: ImgRef<RGBA8>, max_diff: f64) {
+    let diff = a.pixels().zip(b.pixels()).map(|(a,b)| {
+        let a = a.map(|c| c as i32);
+        let b = b.map(|c| c as i32);
+        let d = a - b;
+        (d.r * d.r +
+         d.g * d.g +
+         d.b * d.b) as u64
+    }).sum::<u64>() as f64 / (a.width() * a.height()) as f64;
+    assert!(diff <= max_diff, "{} diff > {}", diff, max_diff);
 }
