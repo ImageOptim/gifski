@@ -7,7 +7,7 @@ use gifski::*;
 
 #[test]
 fn n_frames() {
-    for num_frames in 2..=11 {
+    for num_frames in 1..=11 {
         let (mut c, w) = new(Settings::default()).unwrap();
 
         let t = std::thread::spawn(move || {

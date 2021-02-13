@@ -324,6 +324,8 @@ impl Writer {
                 .min(30000) as u16;
             pts_in_delay_units += u64::from(delay);
 
+            debug_assert_ne!(0, delay);
+
             // skip frames with bad pts
             if delay != 0 {
                 enc.write_frame(frame, delay, settings)?;
@@ -336,6 +338,9 @@ impl Writer {
                     return Err(Error::Aborted);
                 }
             }
+        }
+        if n_done == 0 {
+            return Err(Error::NoFrames);
         }
         enc.finish()?;
         Ok(())
@@ -384,7 +389,7 @@ impl Writer {
 
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
         let (first_frame, first_frame_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
-        let mut prev_frame_pts = 0.0;
+        let mut prev_frame_pts = -1.0;
 
         let mut denoiser = Denoiser::new(first_frame.width(), first_frame.height(), settings.quality);
 
@@ -448,6 +453,7 @@ impl Writer {
                     // otherwise assume steady framerate
                     pts + (pts - prev_frame_pts)
                 };
+                debug_assert!(end_pts > 0.);
                 prev_frame_pts = pts;
 
                 denoiser.push_frame(image.as_ref(), (ordinal_frame_number, end_pts, dispose));
