@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.4.0-alpha.1"
+version = "1.4.0"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -292,9 +292,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant"
-version = "3.0.4-alpha.1"
+version = "3.0.4-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a83d3653c651207acb51e0a8b236599dca8a2cba521b1dc5ac440b87f3b15f0"
+checksum = "52a4992e3d9f6250423b861d2b776028f1567f9ca61a27f86764bdaea65b6631"
 dependencies = [
  "imagequant-sys",
  "libc",
@@ -303,9 +303,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant-sys"
-version = "3.0.4-alpha.1"
+version = "3.0.4-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00316c5d399ab2bd961b8bf2b21b0d855a902191ff461a93f2a44abb59ef78f9"
+checksum = "f6c097d19a41f2f4053638e8fd7f35a19359ad1a8dfc1ac7d2391615a8c104d8"
 dependencies = [
  "bitflags",
  "cc",
