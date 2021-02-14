@@ -306,7 +306,7 @@ impl Writer {
             img.set_background(liq.new_image_stride(bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
 
-        res.set_dithering_level(settings.quality as f32 / 150.0);
+        res.set_dithering_level((settings.quality as f32 / 50.0 - 1.).max(0.));
 
         let (pal, pal_img) = res.remapped(&mut img)?;
         debug_assert_eq!(img.width() * img.height(), pal_img.len());
