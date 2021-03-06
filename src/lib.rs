@@ -220,9 +220,9 @@ impl Collector {
             let (buf, img_width, img_height) = image.into_contiguous_buf();
             assert_eq!(buf.len(), img_width * img_height);
 
-            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA, resize::Type::Lanczos3)?;
+            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
             let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
-            r.resize(buf.as_bytes(), dst.as_bytes_mut())?;
+            r.resize(&buf, &mut dst)?;
             image = ImgVec::new(dst, width, height)
         }
 
