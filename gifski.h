@@ -135,6 +135,8 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
  * For a 20fps video it could be `frame_number/20.0`. First frame must have PTS=0.
  * Frames with duplicate or out-of-order PTS will be skipped.
  *
+ * Colors are in sRGB, uncorrelated RGBA, with alpha byte last.
+ *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
 GifskiError gifski_add_frame_rgba(gifski *handle,
@@ -148,6 +150,10 @@ GifskiError gifski_add_frame_rgba(gifski *handle,
 
 Bytes per row must be multiple of 4, and greater or equal width×4.
 If the bytes per row value is invalid (e.g. an odd number), frames may look sheared/skewed.
+
+Colors are in sRGB, uncorrelated ARGB, with alpha byte first.
+
+`gifski_add_frame_rgba` is preferred over this function.
 */
 GifskiError gifski_add_frame_argb(gifski *handle,
                                   uint32_t frame_number,
@@ -161,6 +167,10 @@ GifskiError gifski_add_frame_argb(gifski *handle,
 
 Bytes per row must be multiple of 3, and greater or equal width×3.
 If the bytes per row value is invalid (not multiple of 3), frames may look sheared/skewed.
+
+Colors are in sRGB, red byte first.
+
+`gifski_add_frame_rgba` is preferred over this function.
 */
 GifskiError gifski_add_frame_rgb(gifski *handle,
                                  uint32_t frame_number,

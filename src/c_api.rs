@@ -150,6 +150,8 @@ pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, 
 ///
 /// The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
 ///
+/// Colors are in sRGB, uncorrelated RGBA, with alpha byte last.
+///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, width: u32, height: u32, pixels: *const RGBA8, presentation_timestamp: f64) -> GifskiError {
@@ -176,6 +178,10 @@ fn add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, frame: ImgVec<
 /// Same as `gifski_add_frame_rgba`, except it expects components in ARGB order.
 ///
 /// Bytes per row must be multiple of 4 and greater or equal width×4.
+///
+/// Colors are in sRGB, uncorrelated ARGB, with alpha byte first.
+///
+/// `gifski_add_frame_rgba` is preferred over this function.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const ARGB8, presentation_timestamp: f64) -> GifskiError {
     if pixels.is_null() {
@@ -198,6 +204,10 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
 /// Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel).
 ///
 /// Bytes per row must be multiple of 3 and greater or equal width×3.
+///
+/// Colors are in sRGB, red byte first.
+///
+/// `gifski_add_frame_rgba` is preferred over this function.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const RGB8, presentation_timestamp: f64) -> GifskiError {
     if pixels.is_null() {
