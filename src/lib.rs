@@ -42,6 +42,7 @@ use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
 use std::path::PathBuf;
 use std::thread;
+use std::borrow::Cow;
 
 type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
 
@@ -192,6 +193,10 @@ impl Collector {
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image.into(), self.width, self.height)?, presentation_timestamp)))
+    }
+
+    pub(crate) fn add_frame_rgba_cow(&mut self, frame_index: usize, image: Img<Cow<[RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height)?, presentation_timestamp)))
     }
 
@@ -208,23 +213,27 @@ impl Collector {
         let image = lodepng::decode32_file(&path)
             .map_err(|err| Error::PNG(format!("Can't load {}: {}", path.display(), err)))?;
 
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(ImgVec::new(image.buffer, image.width, image.height), width, height)?, presentation_timestamp)))
+        let image = Img::new(image.buffer.into(), image.width, image.height);
+        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, width, height)?, presentation_timestamp)))
     }
 
     #[allow(clippy::identity_op)]
     #[allow(clippy::erasing_op)]
-    fn resized_binary_alpha(mut image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
+    fn resized_binary_alpha(image: Img<Cow<[RGBA8]>>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
         let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
-        if width != image.width() || height != image.height() {
-            let (buf, img_width, img_height) = image.into_contiguous_buf();
+        let mut image = if width != image.width() || height != image.height() {
+            let tmp = image.as_ref();
+            let (buf, img_width, img_height) = tmp.to_contiguous_buf();
             assert_eq!(buf.len(), img_width * img_height);
 
             let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
             let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
             r.resize(&buf, &mut dst)?;
-            image = ImgVec::new(dst, width, height)
-        }
+            ImgVec::new(dst, width, height)
+        } else {
+            image.into_owned()
+        };
 
         const DITHER: [u8; 64] = [
          0*2+8,48*2+8,12*2+8,60*2+8, 3*2+8,51*2+8,15*2+8,63*2+8,

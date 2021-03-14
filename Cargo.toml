@@ -24,7 +24,7 @@ clap = "2.33.3"
 gif = "0.11.1"
 gif-dispose = "3.1.1"
 imagequant = "3.0.4-alpha.2"
-imgref = "1.7.1"
+imgref = "1.8.0"
 lodepng = "3.4.5"
 pbr = "1.0.4"
 resize = "0.7.0"
@@ -64,6 +64,8 @@ debug = false
 [profile.release]
 panic = "abort"
 lto = true
+debug = false
+opt-level = 3
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

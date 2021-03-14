@@ -146,7 +146,16 @@ GifskiError gifski_add_frame_rgba(gifski *handle,
                                   const unsigned char *pixels,
                                   double presentation_timestamp);
 
-/** Same as `gifski_add_frame_rgba`, except it expects components in ARGB order.
+/** Same as `gifski_add_frame_rgba`, but with bytes per row arg */
+GifskiError gifski_add_frame_rgba_stride(gifski *handle,
+                                  uint32_t frame_number,
+                                  uint32_t width,
+                                  uint32_t height,
+                                  uint32_t bytes_per_row,
+                                  const unsigned char *pixels,
+                                  double presentation_timestamp);
+
+/** Same as `gifski_add_frame_rgba_stride`, except it expects components in ARGB order.
 
 Bytes per row must be multiple of 4, and greater or equal width×4.
 If the bytes per row value is invalid (e.g. an odd number), frames may look sheared/skewed.
@@ -163,7 +172,7 @@ GifskiError gifski_add_frame_argb(gifski *handle,
                                   const unsigned char *pixels,
                                   double presentation_timestamp);
 
-/** Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel)
+/** Same as `gifski_add_frame_rgba_stride`, except it expects RGB components (3 bytes per pixel)
 
 Bytes per row must be multiple of 3, and greater or equal width×3.
 If the bytes per row value is invalid (not multiple of 3), frames may look sheared/skewed.
