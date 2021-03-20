@@ -556,7 +556,6 @@ impl Writer {
             }
 
             // Check that palette is fine and has no duplicate transparent indices
-            debug_assert!(matches!(image8_pal.len(), 1..=256));
             debug_assert!(image8_pal.iter().enumerate().all(|(idx, color)| {
                 Some(idx as u8) == transparent_index || color.a > 128 || !image8.pixels().any(|px| px == idx as u8)
             }));
