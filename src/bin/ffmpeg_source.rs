@@ -92,7 +92,7 @@ impl FfmpegDecoder {
         let pts_frame_step = 1.0 / self.rate.fps as f64;
 
         loop {
-            let (packet, no_more_packets) = if let Some(Ok((s, packet))) = packets.next() {
+            let (packet, no_more_packets) = if let Some((s, packet)) = packets.next() {
                 if s.index() != stream_index {
                     // ignore irrelevant streams
                     continue;
@@ -103,18 +103,18 @@ impl FfmpegDecoder {
                 (ffmpeg::Packet::empty(), true)
             };
 
-            decoder.decode(&packet, &mut vid_frame)?;
-
-            filter.get("in").ok_or("ffmpeg format error")?.source().add(&vid_frame)?;
-            let mut out = filter.get("out").ok_or("ffmpeg format error")?;
-            let mut out = out.sink();
-            while let Ok(..) = out.frame(&mut filt_frame) {
-                add_frame(&filt_frame, pts_frame_step * i as f64, i)?;
-                i += 1;
+            let decoded = decoder.decode(&packet, &mut vid_frame)?;
+            if decoded {
+                filter.get("in").ok_or("ffmpeg format error")?.source().add(&vid_frame)?;
+                let mut out = filter.get("out").ok_or("ffmpeg format error")?;
+                let mut out = out.sink();
+                while let Ok(..) = out.frame(&mut filt_frame) {
+                    add_frame(&filt_frame, pts_frame_step * i as f64, i)?;
+                    i += 1;
+                }
             }
-
             // loop to flush decoder's buffer
-            if no_more_packets {
+            if no_more_packets && !decoded {
                 break;
             }
         }
