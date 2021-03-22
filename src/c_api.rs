@@ -19,6 +19,26 @@
 //!
 //! To cancel processing, make progress callback return 0 and call `gifski_finish()`. The write callback
 //! may still be called between the cancellation and `gifski_finish()` returning.
+//!
+//! To build as a library:
+//!
+//! ```bash
+//! cargo build --release --lib
+//! ```
+//!
+//! it will create `target/release/libgifski.a` (static library)
+//! and `target/release/libgifski.so`/`dylib` or `gifski.dll` (dynamic library)
+//!
+//! Static is recommended.
+//!
+//! To build for iOS:
+//!
+//! ```bash
+//! rustup target add aarch64-apple-ios
+//! cargo build --release --lib --target aarch64-apple-ios
+//! ```
+//!
+//! it will build `target/aarch64-apple-ios/release/libgifski.a` (ignore the warning about cdylib).
 
 use super::*;
 use std::ffi::CStr;
