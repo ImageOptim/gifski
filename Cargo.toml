@@ -33,7 +33,7 @@ wild = "2.0.4"
 natord = "1.0.9"
 quick-error = "2.0.0"
 dunce = "1.0.1"
-crossbeam-channel = "0.5.0"
+crossbeam-channel = "0.5.1"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
