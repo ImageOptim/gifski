@@ -236,9 +236,9 @@ dependencies = [
 
 [[package]]
 name = "gifsicle"
-version = "1.92.4"
+version = "1.92.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d90d32c0f12265eb9eac36caed505fd8fe65fd5c3f5e442dd0b6e1598a2118e8"
+checksum = "36998a2316aad26c8bfd74c82a8809eaf12e2216a2938bc4dca5b83c59fb3e1a"
 dependencies = [
  "cc",
  "libc",
