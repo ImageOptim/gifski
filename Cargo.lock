@@ -303,9 +303,9 @@ dependencies = [
 
 [[package]]
 name = "imagequant-sys"
-version = "3.0.4-alpha.2"
+version = "3.0.6+sys2.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6c097d19a41f2f4053638e8fd7f35a19359ad1a8dfc1ac7d2391615a8c104d8"
+checksum = "2ecc4e7ac6819ece33be83cedcf43caaced03f340a96f14b3da7a90f41111319"
 dependencies = [
  "bitflags",
  "cc",

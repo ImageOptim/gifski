@@ -272,6 +272,6 @@ or
 cargo install gifski --features=video
 
 Alternatively, use ffmpeg command to export PNG frames, and then specify
-the PNG files as input for this executable.
+the PNG files as input for this executable. Instructions on https://gif.ski
 ")?
 }
