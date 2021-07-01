@@ -32,7 +32,7 @@ rgb = "0.8.27"
 wild = "2.0.4"
 natord = "1.0.9"
 quick-error = "2.0.1"
-dunce = "1.0.1"
+dunce = "1.0.2"
 crossbeam-channel = "0.5.1"
 
 [dependencies.ffmpeg]
