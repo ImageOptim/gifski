@@ -1,6 +1,7 @@
 #[macro_use] extern crate clap;
 
 use std::ffi::OsStr;
+use std::io::Read;
 use gifski::{Settings, Repeat};
 
 #[cfg(feature = "video")]
@@ -68,7 +69,7 @@ fn bin_main() -> BinResult<()> {
                             .default_value("20"))
                         .arg(Arg::with_name("fast-forward")
                             .long("fast-forward")
-                            .help("Multiply speed of video by a factor\n(no effect when using PNG files as input)")
+                            .help("Multiply speed of video by a factor\n(no effect when using images as input)")
                             .empty_values(false)
                             .value_name("x")
                             .default_value("1"))
@@ -162,11 +163,22 @@ fn bin_main() -> BinResult<()> {
 
     check_if_paths_exist(&frames)?;
 
-    let mut decoder = if frames.len() == 1 {
-        get_video_decoder(&frames[0], rate, settings)?
+    let mut decoder = if frames.is_empty() {
+        Err("Please specify input files")?
+    } else if frames.len() == 1 {
+        match file_type(&frames[0]).unwrap_or(FileType::Other) {
+            FileType::PNG | FileType::JPEG => Err("Only a single image file was given as an input. This is not enough to make an animation.")?,
+            _ => get_video_decoder(&frames[0], rate, settings)?,
+        }
     } else {
+        if let Ok(FileType::JPEG) = file_type(&frames[0]) {
+            Err("JPEG format is unsuitable for conversion to GIF.\n\n\
+                JPEG's compression artifacts and color space are very problematic for palette-based\n\
+                compression. Please don't use JPEG for making GIF animations. Please re-export\n\
+                your animation using the PNG format.")?
+        }
         if speed != 1.0 {
-            Err("Speed doesn't apply to PNG files as input, use fps only")?;
+            Err("Speed is for videos. It doesn't make sense for images. Use fps only")?;
         }
         Box::new(png::Lodecoder::new(frames, &rate))
     };
@@ -204,6 +216,24 @@ fn bin_main() -> BinResult<()> {
     progress.done(&format!("gifski created {}", output_path));
 
     Ok(())
+}
+
+enum FileType {
+    PNG, JPEG, Other,
+}
+
+fn file_type(path: &Path) -> BinResult<FileType> {
+    let mut file = std::fs::File::open(path)?;
+    let mut buf = [0; 4];
+    file.read_exact(&mut buf)?;
+
+    if &buf == b"\x89PNG" {
+        return Ok(FileType::PNG);
+    }
+    if &buf[..2] == [0xFF, 0xD8] {
+        return Ok(FileType::JPEG);
+    }
+    Ok(FileType::Other)
 }
 
 fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
