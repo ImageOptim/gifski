@@ -506,7 +506,7 @@ impl Writer {
                     // if denoiser says the background didn't change, then believe it
                     // (except higher quality settings, which try to improve it every time)
                     let bg_keep_likelyhood = settings.quality.saturating_sub(80) / 4;
-                    if settings.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelyhood {
+                    if settings.fast || (settings.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelyhood) {
                         image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
                     }
                 }

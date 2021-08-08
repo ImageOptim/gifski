@@ -81,6 +81,7 @@ fn bin_main() -> BinResult<()> {
                             .short("Q")
                             .value_name("1-100")
                             .takes_value(true)
+                            .default_value("90")
                             .help("Lower quality may give smaller file"))
                         .arg(Arg::with_name("width")
                             .long("width")
