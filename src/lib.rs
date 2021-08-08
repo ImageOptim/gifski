@@ -498,8 +498,19 @@ impl Writer {
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: Sender<RemapMessage>, settings: &Settings) -> CatResult<()> {
         let mut prev_frame_keeps = false;
-        while let Some(DiffMessage {image, end_pts, dispose, ordinal_frame_number, mut importance_map}) = inputs.recv().ok() {
+        let mut consecutive_frame_num = 0;
+        while let Some(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, mut importance_map}) = inputs.recv().ok() {
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
+
+                if prev_frame_keeps {
+                    // if denoiser says the background didn't change, then believe it
+                    // (except higher quality settings, which try to improve it every time)
+                    let bg_keep_likelyhood = settings.quality.saturating_sub(80) / 4;
+                    if settings.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelyhood {
+                        image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
+                    }
+                }
+
                 let (liq, remap, liq_image) = Self::quantize(image.as_ref(), &importance_map, ordinal_frame_number > 1, settings)?;
                 let max_loss = settings.gifsicle_loss();
                 for imp in &mut importance_map {
@@ -513,6 +524,7 @@ impl Writer {
                     liq, remap,
                     liq_image,
                 })?;
+                consecutive_frame_num += 1;
             }
             prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
         }
