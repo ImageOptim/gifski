@@ -74,7 +74,7 @@ fn all_but_one_dupe_frames() {
     for_each_frame(&out, |frame, actual| {
         let expected = lodepng::decode32_file(frame_filename(if n == 0 {0} else {1})).unwrap();
         let expected = ImgVec::new(expected.buffer, expected.width, expected.height);
-        assert_images_eq(expected.as_ref(), actual, 0.07);
+        assert_images_eq(expected.as_ref(), actual, 0.075);
         assert_eq!(frame.delay, if n == 0 {120} else {2*10}); // 2*, because 1.2…1.3 + 1.3…1.4 (assumed fps)
         n += 1;
     });
