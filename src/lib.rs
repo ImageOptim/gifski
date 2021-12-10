@@ -168,7 +168,14 @@ struct FrameMessage {
 ///
 /// You feed input frames to the `Collector`, and ask the `Writer` to
 /// start writing the GIF.
+#[inline]
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
+    if settings.quality == 0 || settings.quality > 100 {
+        return Err(Error::WrongSize("quality must be 1-100".into())); // I forgot to add a better error variant
+    }
+    if settings.width.unwrap_or(0) > 1<<16 || settings.height.unwrap_or(0) > 1<<16 {
+        return Err(Error::WrongSize("image size too large".into()));
+    }
     let (queue, queue_iter) = ordqueue::new(4);
 
     Ok((
