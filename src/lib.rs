@@ -308,12 +308,12 @@ impl Writer {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality);
-        let mut img = liq.new_image_stride_copy(image.buf(), image.width(), image.height(), image.stride(), 0.)?;
+        let mut img = liq.new_image_stride(image.buf(), image.width(), image.height(), image.stride(), 0.)?;
         img.set_importance_map(importance_map)?;
         if has_prev_frame {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
         }
-        let res = liq.quantize(&img)?;
+        let res = liq.quantize(&mut img)?;
         Ok((liq, res, img))
     }
 
