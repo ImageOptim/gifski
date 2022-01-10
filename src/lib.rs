@@ -20,7 +20,7 @@
 #[macro_use]
 extern crate quick_error;
 
-use imagequant::*;
+use imagequant::{Image, QuantizationResult, Attributes};
 use imgref::*;
 use rgb::*;
 
@@ -200,10 +200,12 @@ impl Collector {
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
+        debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image.into(), self.width, self.height)?, presentation_timestamp)))
     }
 
     pub(crate) fn add_frame_rgba_cow(&mut self, frame_index: usize, image: Img<Cow<[RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
+        debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
         self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height)?, presentation_timestamp)))
     }
 
@@ -405,7 +407,7 @@ impl Writer {
 
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
         let (first_frame, first_frame_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
-        let mut prev_frame_pts = -1.0;
+        let mut prev_frame_pts = f64::NAN;
 
         let mut denoiser = Denoiser::new(first_frame.width(), first_frame.height(), settings.quality);
 
@@ -460,12 +462,14 @@ impl Writer {
 
                 // conversion from pts to delay
                 let end_pts = if let Some((_, next_pts)) = next_frame {
+                    debug_assert!(next_pts > 0.);
                     next_pts - first_frame_pts
                 } else if first_frame_pts > 1. / 100. {
                     // this is gifski's weird rule that non-zero first-frame pts
                     // shifts the whole anim and is the delay of the last frame
                     pts + first_frame_pts
                 } else {
+                    debug_assert!(prev_frame_pts.is_finite());
                     // otherwise assume steady framerate
                     pts + (pts - prev_frame_pts)
                 };

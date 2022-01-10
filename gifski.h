@@ -92,7 +92,7 @@ enum GifskiError {
   GIFSKI_QUANT,
   /** internal error related to gif composing */
   GIFSKI_GIF,
-  /** internal error related to multithreading */
+  /** internal error - unexpectedly aborted */
   GIFSKI_THREAD_LOST,
   /** I/O error: file or directory not found */
   GIFSKI_NOT_FOUND,
