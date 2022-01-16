@@ -409,7 +409,7 @@ impl Writer {
 
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
         let (first_frame, first_frame_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
-        let mut prev_frame_pts = f64::NAN;
+        let mut prev_frame_pts = 0.;
 
         let mut denoiser = Denoiser::new(first_frame.width(), first_frame.height(), settings.quality);
 
@@ -471,9 +471,8 @@ impl Writer {
                     // shifts the whole anim and is the delay of the last frame
                     pts + first_frame_pts
                 } else {
-                    debug_assert!(prev_frame_pts.is_finite());
                     // otherwise assume steady framerate
-                    pts + (pts - prev_frame_pts)
+                    (pts + (pts - prev_frame_pts)).max(1./100.)
                 };
                 debug_assert!(end_pts > 0.);
                 prev_frame_pts = pts;
