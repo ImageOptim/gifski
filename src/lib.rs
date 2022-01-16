@@ -299,21 +299,22 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgRef<'_, RGBA8>, importance_map: &[u8], has_prev_frame: bool, settings: &Settings) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], has_prev_frame: bool, settings: &Settings) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
         let mut liq = Attributes::new();
         if settings.fast {
-            liq.set_speed(10);
+            liq.set_speed(10)?;
         }
         let quality = if has_prev_frame {
             settings.color_quality().into()
         } else {
             100 // the first frame is too important to ruin it
         };
-        liq.set_quality(0, quality);
-        let mut img = liq.new_image_stride(image.buf(), image.width(), image.height(), image.stride(), 0.)?;
+        liq.set_quality(0, quality)?;
+        let (buf, width, height) = image.into_contiguous_buf();
+        let mut img = liq.new_image(buf, width, height, 0.)?;
         img.set_importance_map(importance_map)?;
         if has_prev_frame {
-            img.add_fixed_color(RGBA8::new(0, 0, 0, 0));
+            img.add_fixed_color(RGBA8::new(0, 0, 0, 0))?;
         }
         let res = liq.quantize(&mut img)?;
         Ok((liq, res, img))
@@ -321,10 +322,11 @@ impl Writer {
 
     fn remap(liq: Attributes, mut res: QuantizationResult, mut img: Image<'static>, background: Option<ImgRef<'_, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         if let Some(bg) = background {
-            img.set_background(liq.new_image_stride(bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
+            let (buf, width, height) = bg.to_contiguous_buf();
+            img.set_background(liq.new_image(buf, width, height, 0.)?)?;
         }
 
-        res.set_dithering_level((settings.quality as f32 / 50.0 - 1.).max(0.));
+        res.set_dithering_level((settings.quality as f32 / 50.0 - 1.).max(0.))?;
 
         let (pal, pal_img) = res.remapped(&mut img)?;
         debug_assert_eq!(img.width() * img.height(), pal_img.len());
@@ -522,7 +524,7 @@ impl Writer {
                     }
                 }
 
-                let (liq, remap, liq_image) = Self::quantize(image.as_ref(), &importance_map, ordinal_frame_number > 1, settings)?;
+                let (liq, remap, liq_image) = Self::quantize(image, &importance_map, ordinal_frame_number > 1, settings)?;
                 let max_loss = settings.gifsicle_loss();
                 for imp in &mut importance_map {
                     // encoding assumes rgba background looks like encoded background, which is not true for lossy
