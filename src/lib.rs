@@ -140,6 +140,7 @@ struct DiffMessage {
     dispose: gif::DisposalMethod,
     image: ImgVec<RGBA8>,
     importance_map: Vec<u8>,
+    needs_transparency: bool,
 }
 
 /// Frame post quantization, before remap
@@ -299,12 +300,12 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], has_prev_frame: bool, settings: &Settings) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &Settings) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
         let mut liq = Attributes::new();
         if settings.fast {
             liq.set_speed(10)?;
         }
-        let quality = if has_prev_frame {
+        let quality = if !first_frame {
             settings.color_quality().into()
         } else {
             100 // the first frame is too important to ruin it
@@ -312,8 +313,15 @@ impl Writer {
         liq.set_quality(0, quality)?;
         let (buf, width, height) = image.into_contiguous_buf();
         let mut img = liq.new_image(buf, width, height, 0.)?;
-        img.set_importance_map(importance_map)?;
-        if has_prev_frame {
+        // only later remapping tracks which area has been damanged by transparency
+        // so for previous-transparent background frame the importance map may be invalid
+        // because there's a transparent hole in the background not taken into account,
+        // and palette may lack colors to fill that hole
+        if first_frame || prev_frame_keeps {
+            img.set_importance_map(importance_map)?;
+        }
+        // first frame may be transparent too, so it's not just for diffs
+        if needs_transparency {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0))?;
         }
         let res = liq.quantize(&mut img)?;
@@ -500,6 +508,7 @@ impl Writer {
                 dispose,
                 importance_map,
                 ordinal_frame_number,
+                needs_transparency: ordinal_frame_number > 0 || (ordinal_frame_number == 0 && first_frame_has_transparency),
                 image,
                 end_pts,
             })?;
@@ -511,7 +520,7 @@ impl Writer {
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: Sender<RemapMessage>, settings: &Settings) -> CatResult<()> {
         let mut prev_frame_keeps = false;
         let mut consecutive_frame_num = 0;
-        while let Some(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, mut importance_map}) = inputs.recv().ok() {
+        while let Some(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, needs_transparency, mut importance_map}) = inputs.recv().ok() {
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
 
                 if prev_frame_keeps {
@@ -523,7 +532,7 @@ impl Writer {
                     }
                 }
 
-                let (liq, remap, liq_image) = Self::quantize(image, &importance_map, ordinal_frame_number > 1, settings)?;
+                let (liq, remap, liq_image) = Self::quantize(image, &importance_map, consecutive_frame_num == 0, needs_transparency, prev_frame_keeps, settings)?;
                 let max_loss = settings.gifsicle_loss();
                 for imp in &mut importance_map {
                     // encoding assumes rgba background looks like encoded background, which is not true for lossy
