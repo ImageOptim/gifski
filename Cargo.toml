@@ -37,7 +37,7 @@ crossbeam-channel = "0.5.2"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
-version = "4.4.0"
+version = ">= 4.4.0, <6"
 optional = true
 default-features = false
 features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
@@ -69,3 +69,7 @@ opt-level = 3
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+
+# [patch.crates-io]
+# ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git", rev = "feae6b21b8c9f76d399260f812c0deb620bf02ad" }
+# ffmpeg-sys-next = { git = "https://github.com/kornelski/rust-ffmpeg-sys-1.git", rev = "c6dc629aecebfcc12893aa1bc4338f99e9b71bef" }
