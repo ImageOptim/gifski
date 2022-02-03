@@ -147,16 +147,16 @@ fn bin_main() -> BinResult<()> {
 
     if settings.quality < 20 {
         if settings.quality < 1 {
-            Err("Quality too low")?;
+            return Err("Quality too low".into());
         } else if !quiet {
             eprintln!("warning: quality {} will give really bad results", settings.quality);
         }
     } else if settings.quality > 100 {
-        Err("Quality 100 is maximum")?;
+        return Err("Quality 100 is maximum".into());
     }
 
     if fps > 100.0 {
-        Err("100 fps is maximum")?;
+        return Err("100 fps is maximum".into());
     }
     else if !quiet && fps > 50.0 {
         eprintln!("warning: web browsers support max 50 fps");
@@ -165,21 +165,21 @@ fn bin_main() -> BinResult<()> {
     check_if_paths_exist(&frames)?;
 
     let mut decoder = if frames.is_empty() {
-        Err("Please specify input files")?
+        return Err("Please specify input files".into())
     } else if frames.len() == 1 {
         match file_type(&frames[0]).unwrap_or(FileType::Other) {
-            FileType::PNG | FileType::JPEG => Err("Only a single image file was given as an input. This is not enough to make an animation.")?,
+            FileType::PNG | FileType::JPEG => return Err("Only a single image file was given as an input. This is not enough to make an animation.".into()),
             _ => get_video_decoder(&frames[0], rate, settings)?,
         }
     } else {
         if let Ok(FileType::JPEG) = file_type(&frames[0]) {
-            Err("JPEG format is unsuitable for conversion to GIF.\n\n\
+            return Err("JPEG format is unsuitable for conversion to GIF.\n\n\
                 JPEG's compression artifacts and color space are very problematic for palette-based\n\
                 compression. Please don't use JPEG for making GIF animations. Please re-export\n\
-                your animation using the PNG format.")?
+                your animation using the PNG format.".into())
         }
         if speed != 1.0 {
-            Err("Speed is for videos. It doesn't make sense for images. Use fps only")?;
+            return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
         }
         Box::new(png::Lodecoder::new(frames, &rate))
     };
@@ -246,7 +246,7 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
             } else if path.is_relative() {
                 msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
             }
-            Err(msg)?
+            return Err(msg.into())
         }
     }
     Ok(())
@@ -304,5 +304,5 @@ cargo install gifski --features=video
 
 Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable. Instructions on https://gif.ski
-")?
+".into())
 }

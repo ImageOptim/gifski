@@ -306,7 +306,7 @@ impl Writer {
             liq.set_speed(10)?;
         }
         let quality = if !first_frame {
-            settings.color_quality().into()
+            settings.color_quality()
         } else {
             100 // the first frame is too important to ruin it
         };
@@ -460,14 +460,12 @@ impl Writer {
                     } else {
                         gif::DisposalMethod::Keep
                     }
+                } else if first_frame_has_transparency {
+                    // Last frame should reset to background to avoid breaking transparent looped anims
+                    gif::DisposalMethod::Background
                 } else {
-                    if first_frame_has_transparency {
-                        // Last frame should reset to background to avoid breaking transparent looped anims
-                        gif::DisposalMethod::Background
-                    } else {
-                        // macOS preview gets Background wrong
-                        gif::DisposalMethod::Keep
-                    }
+                    // macOS preview gets Background wrong
+                    gif::DisposalMethod::Keep
                 };
 
                 // conversion from pts to delay
@@ -520,7 +518,7 @@ impl Writer {
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: Sender<RemapMessage>, settings: &Settings) -> CatResult<()> {
         let mut prev_frame_keeps = false;
         let mut consecutive_frame_num = 0;
-        while let Some(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, needs_transparency, mut importance_map}) = inputs.recv().ok() {
+        while let Ok(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, needs_transparency, mut importance_map}) = inputs.recv() {
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
 
                 if prev_frame_keeps {
