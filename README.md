@@ -12,9 +12,9 @@ It's a CLI tool, but it can also be compiled [as a C library](https://docs.rs/gi
 
 See [releases](https://github.com/ImageOptim/gifski/releases) page for executables.
 
-If you have [Rust](https://www.rust-lang.org/install.html) 1.49+, you can also get it with [`cargo install gifski`](https://crates.rs/crates/gifski). Run `cargo build --release --features=openmp` or `cargo build --release --features=video,openmp` to build from source.
-
 If you have [Homebrew](https://brew.sh/), you can also get it with `brew install gifski`.
+
+If you have [Rust](https://www.rust-lang.org/install.html) 1.49+, you can also build it from source with [`cargo install gifski`](https://lib.rs/crates/gifski).
 
 ## Usage
 
@@ -44,8 +44,6 @@ See `gifski -h` for more options.
 2. Clone the repository: `git clone https://github.com/ImageOptim/gifski`
 3. In the cloned directory, run: `cargo build --release`
 
-Enable OpenMP by adding `--features=openmp` to Cargo build flags (supported on macOS and Linux with GCC). It makes encoding more than twice as fast.
-
 ### Using from C
 
 [See `gifski.h` for the API](https://docs.rs/gifski). To build the library, run:
@@ -66,7 +64,7 @@ The tool optionally supports decoding video directly, but unfortunately it relie
 
 You must have `ffmpeg` and `libclang` installed, both with their C headers intalled in default system include paths. Details depend on the platform and version, but you usually need to install packages such as `libavformat-dev`, `libavfilter-dev`, `libavdevice-dev`, `libclang-dev`, `clang`. Please note that installation of these dependencies may be quite difficult. Especially on macOS and Windows it takes *expert knowledge* to just get them installed without wasting several hours on endless stupid installation and compilation errors, which I can't help with.
 
-Once you have dependencies installed, compile with `cargo build --release --features=video,openmp` or `cargo build --release --features=video-static`.
+Once you have dependencies installed, compile with `cargo build --release --features=video` or `cargo build --release --features=video-static`.
 
 When compiled with video support [ffmpeg licenses](https://www.ffmpeg.org/legal.html) apply. You may need to have a patent license to use H.264/H.265 video (I recommend using VP9/WebM instead).
 
