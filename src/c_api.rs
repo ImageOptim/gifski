@@ -143,6 +143,7 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
+#[cfg(feature = "png")]
 pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, frame_number: u32, file_path: *const c_char, presentation_timestamp: f64) -> GifskiError {
     if file_path.is_null() {
         return GifskiError::NULL_ARG;
