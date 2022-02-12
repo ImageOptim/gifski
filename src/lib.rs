@@ -40,7 +40,6 @@ mod encodegifsicle;
 
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
-use std::path::PathBuf;
 use std::thread;
 use std::borrow::Cow;
 
@@ -217,7 +216,8 @@ impl Collector {
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
-    pub fn add_frame_png_file(&mut self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
+    #[cfg(feature = "png")]
+    pub fn add_frame_png_file(&mut self, frame_index: usize, path: std::path::PathBuf, presentation_timestamp: f64) -> CatResult<()> {
         let width = self.width;
         let height = self.height;
         let image = lodepng::decode32_file(&path)

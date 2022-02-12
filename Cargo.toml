@@ -17,7 +17,11 @@ edition = "2021"
 [[bin]]
 doctest = false
 name = "gifski"
-required-features = ["clap", "wild", "natord", "dunce"]
+required-features = ["clap", "png", "pbr", "wild", "natord", "dunce"]
+
+[[test]]
+name = "tests"
+required-features = ["png"]
 
 [dependencies]
 gifsicle = { version = "1.92.5", optional = true }
@@ -26,8 +30,8 @@ gif = "0.11.3"
 gif-dispose = "3.1.1"
 imagequant = "4.0.0"
 imgref = "1.9.1"
-lodepng = "3.5.2"
-pbr = "1.0.4"
+lodepng = { version = "3.5.2", optional = true }
+pbr = { version = "1.0.4", optional = true }
 resize = "0.7.2"
 rgb = "0.8.31"
 wild = { version = "2.0.4", optional = true }
@@ -46,7 +50,8 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 [features]
 # cargo build will skip the binaries with missing required-features
 # so all CLI dependencies have to be enabled by default
-default = ["gifsicle", "clap", "wild", "natord", "dunce"]
+default = ["gifsicle", "clap", "png", "pbr", "wild", "natord", "dunce"]
+png = ["lodepng"]
 openmp = [] # deprecated, obsolete
 openmp-static = [] # deprecated, obsolete
 video = ["ffmpeg"]
