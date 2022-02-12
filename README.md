@@ -46,7 +46,7 @@ See `gifski -h` for more options.
 
 ### Using from C
 
-[See `gifski.h` for the API](https://docs.rs/gifski). To build the library, run:
+[See `gifski.h`](https://github.com/ImageOptim/gifski/blob/main/gifski.h) for [the C API](https://docs.rs/gifski/latest/gifski/c_api/#functions). To build the library, run:
 
 ```sh
 cargo build --release
@@ -56,7 +56,7 @@ and link with `target/release/libgifski.a`. Please observe the [LICENSE](LICENSE
 
 ## License
 
-AGPL 3 or later. Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license. I can offer alternative licensing options, including [commercial licenses](https://supso.org/projects/pngquant).
+AGPL 3 or later. I can offer alternative licensing options, including [commercial licenses](https://supso.org/projects/pngquant). Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license.
 
 ## With built-in video support
 
@@ -74,6 +74,10 @@ gifski -o out.gif video.mp4
 
 ## Cross-compilation for iOS
 
+The easy option is to use the included `gifski.xcodeproj` file to build the library automatically for all Apple platforms. Add it as a [subproject](https://lib.rs/crates/cargo-xcode) to your Xcode project, and link with `gifski-staticlib` Xcode target. See [the GUI app](https://github.com/sindresorhus/Gifski) for an example how to integrate the library.
+
+### Cross-compilation for iOS manually
+
 Make sure you have Rust installed via [rustup](https://rustup.rs/). Run once:
 
 ```sh
@@ -86,10 +90,9 @@ and then to build the library:
 cargo build --lib --release --target=aarch64-apple-ios
 ```
 
-The build will print "dropping unsupported crate type `cdylib`". This is normal and expected.
+The build will print "dropping unsupported crate type `cdylib`" warning. This is normal and expected when building for iOS (the cdylib option exists for other platforms).
 
 This will create a static library in `./target/aarch64-apple-ios/release/libgifski.a`. You can add this library to your Xcode project. See [gifski.app](https://github.com/sindresorhus/Gifski) for an example how to use libgifski from Swift.
 
-You can also [use `cargo lipo` command](https://lib.rs/crates/cargo-lipo) to integrate with Xcode project to have it built automatically.
 
 
