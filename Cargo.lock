@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.6.5"
+version = "1.6.6"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -371,9 +371,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.117"
+version = "0.2.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e74d72e0f9b65b5b4ca49a346af3976df0f9c61d550727f349ecd559f251a26c"
+checksum = "06e509672465a0504304aa87f9f176f2b2b716ed8fb105ebe5c02dc6dce96a94"
 
 [[package]]
 name = "libloading"
@@ -387,9 +387,9 @@ dependencies = [
 
 [[package]]
 name = "lodepng"
-version = "3.6.0"
+version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb66a20228888c9e2a0101748b3425b9d25f999a51a7c3f9bde7f11ae3a93b4a"
+checksum = "7f84e1fdcdbe8b3f0f9caaadb6b86d0e0647786e993f6ea70686f6837b989ec7"
 dependencies = [
  "crc32fast",
  "fallible_collections",

@@ -10,7 +10,7 @@ license = "AGPL-3.0+"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "1.6.5"
+version = "1.6.6"
 autobins = false
 edition = "2021"
 
@@ -30,7 +30,7 @@ gif = "0.11.3"
 gif-dispose = "3.1.1"
 imagequant = "4.0.0"
 imgref = "1.9.1"
-lodepng = { version = "3.5.2", optional = true }
+lodepng = { version = "3.6.1", optional = true }
 pbr = { version = "1.0.4", optional = true }
 resize = "0.7.2"
 rgb = "0.8.31"
