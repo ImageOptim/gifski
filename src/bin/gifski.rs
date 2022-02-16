@@ -58,10 +58,10 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::new("fps")
                             .long("fps")
                             .short('r')
-                            .help("Frame rate of animation. If using PNG files as \n\
-                                   input, this means the speed, as all frames are \n\
-                                   kept. If video is used, it will be resampled to \n\
-                                   this constant rate by dropping and/or duplicating \n\
+                            .help("Frame rate of animation. If using PNG files as \
+                                   input, this means the speed, as all frames are \
+                                   kept. If video is used, it will be resampled to \
+                                   this constant rate by dropping and/or duplicating \
                                    frames")
                             .forbid_empty_values(true)
                             .value_name("num")
@@ -74,7 +74,11 @@ fn bin_main() -> BinResult<()> {
                             .default_value("1"))
                         .arg(Arg::new("fast")
                             .long("fast")
-                            .help("3 times faster encoding, but 10% lower quality and \nlarger file size"))
+                            .help("50% faster encoding, but 10% worse quality and larger file size"))
+                        .arg(Arg::new("extra")
+                            .long("extra")
+                            .conflicts_with("fast")
+                            .help("50% slower encoding, but 1% better quality"))
                         .arg(Arg::new("quality")
                             .long("quality")
                             .short('Q')
@@ -95,8 +99,9 @@ fn bin_main() -> BinResult<()> {
                             .value_name("px")
                             .help("Maximum height (stretches if the width is also set)"))
                         .arg(Arg::new("nosort")
-                            .long("nosort")
-                            .help("Use files exactly in the order given, rather than \nsorted"))
+                            .alias("nosort")
+                            .long("no-sort")
+                            .help("Use files exactly in the order given, rather than sorted"))
                         .arg(Arg::new("quiet")
                             .long("quiet")
                             .short('q')
@@ -131,6 +136,7 @@ fn bin_main() -> BinResult<()> {
         _ => repeat = Repeat::Finite(repeat_int as u16),
     }
 
+    let extra = matches.is_present("extra");
     let settings = Settings {
         width,
         height,
@@ -197,7 +203,11 @@ fn bin_main() -> BinResult<()> {
         &mut pb
     };
 
-    let (mut collector, writer) = gifski::new(settings)?;
+    let (mut collector, mut writer) = gifski::new(settings)?;
+    if extra {
+        #[allow(deprecated)]
+        writer.set_extra_effort();
+    }
     let decode_thread = thread::Builder::new().name("decode".into()).spawn(move || {
         decoder.collect(&mut collector)
     })?;
