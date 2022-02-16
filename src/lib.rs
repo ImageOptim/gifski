@@ -245,6 +245,24 @@ impl Collector {
             image.into_owned()
         };
 
+        // dithering of anti-aliased edges can look very fuzzy, so disable it near the edges
+        let mut anti_aliasing = Vec::with_capacity(image.width() * image.height());
+        loop9::loop9(image.as_ref(), 0, 0, image.width(), image.height(), |_x,_y, top, mid, bot| {
+            anti_aliasing.push(if mid.curr.a == 255 || mid.curr.a == 0 {
+                false
+            } else {
+                fn is_edge(a: u8, b: u8) -> bool {
+                    a < 12 && b >= 240 ||
+                    b < 12 && a >= 240
+                }
+                is_edge(top.curr.a, bot.curr.a) ||
+                is_edge(mid.prev.a, mid.next.a) ||
+                is_edge(top.prev.a, bot.next.a) ||
+                is_edge(top.next.a, bot.prev.a)
+            });
+        });
+
+        // this table is already biased, so that px.a doesn't need to be changed
         const DITHER: [u8; 64] = [
          0*2+8,48*2+8,12*2+8,60*2+8, 3*2+8,51*2+8,15*2+8,63*2+8,
         32*2+8,16*2+8,44*2+8,28*2+8,35*2+8,19*2+8,47*2+8,31*2+8,
@@ -256,10 +274,14 @@ impl Collector {
         42*2+8,26*2+8,38*2+8,22*2+8,41*2+8,25*2+8,37*2+8,21*2+8];
 
         // Make transparency binary
-        for (y, row) in image.rows_mut().enumerate() {
-            for (x, px) in row.iter_mut().enumerate() {
+        for (y, (row, aa)) in image.rows_mut().zip(anti_aliasing.chunks_exact(width)).enumerate() {
+            for (x, (px, aa)) in row.iter_mut().zip(aa.iter().copied()).enumerate() {
                 if px.a < 255 {
-                    px.a = if px.a < DITHER[(y & 7) * 8 + (x & 7)] { 0 } else { 255 };
+                    if aa {
+                        px.a = if px.a < 89 { 0 } else { 255 };
+                    } else {
+                        px.a = if px.a < DITHER[(y & 7) * 8 + (x & 7)] { 0 } else { 255 };
+                    }
                 }
             }
         }
