@@ -33,7 +33,7 @@ imgref = "1.9.1"
 lodepng = { version = "3.6.1", optional = true }
 pbr = { version = "1.0.4", optional = true }
 resize = "0.7.2"
-rgb = "0.8.31"
+rgb = "0.8.32"
 wild = { version = "2.0.4", optional = true }
 natord = { version = "1.0.9", optional = true }
 quick-error = "2.0.1"
