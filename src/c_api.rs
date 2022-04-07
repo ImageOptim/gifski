@@ -493,6 +493,33 @@ fn c_cb() {
 }
 
 #[test]
+fn progress_abort() {
+    let g = unsafe {
+        gifski_new(&GifskiSettings {
+            width: 1,
+            height: 1,
+            quality: 100,
+            fast: false,
+            repeat: -1,
+        })
+    };
+    assert!(!g.is_null());
+    unsafe extern "C" fn cb(_size: usize, _buf: *const u8, _user_data: *mut c_void) -> c_int {
+        0
+    }
+    unsafe extern "C" fn pcb(_user_data: *mut c_void) -> c_int {
+        0
+    }
+    unsafe {
+        assert_eq!(GifskiError::OK, gifski_set_progress_callback(g, pcb, ptr::null_mut()));
+        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), ptr::null_mut()));
+        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 3.));
+        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 10.));
+        assert_eq!(GifskiError::OK, gifski_finish(g));
+    }
+}
+
+#[test]
 fn cant_write_after_finish() {
     let g = unsafe { gifski_new(&GifskiSettings {
         width: 1, height: 1,
