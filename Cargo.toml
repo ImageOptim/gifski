@@ -6,7 +6,7 @@ documentation = "https://docs.rs/gifski"
 homepage = "https://gif.ski"
 include = ["/README.md", "/Cargo.toml", "/src/**/*.rs", "/src/bin/*.rs"]
 keywords = ["gif", "encoder", "converter", "maker", "gifquant"]
-license = "AGPL-3.0+"
+license = "AGPL-3.0-or-later"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
@@ -25,7 +25,7 @@ required-features = ["png"]
 
 [dependencies]
 gifsicle = { version = "1.92.5", optional = true }
-clap = { version = "3.0.14", features = ["cargo"], optional = true }
+clap = { version = "3.1.18", features = ["cargo"], optional = true }
 gif = "0.11.3"
 gif-dispose = "3.1.1"
 imagequant = "4.0.0"
