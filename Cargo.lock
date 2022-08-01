@@ -303,6 +303,7 @@ dependencies = [
  "lodepng",
  "loop9",
  "natord",
+ "num-traits",
  "pbr",
  "quick-error",
  "resize",
@@ -336,12 +337,11 @@ dependencies = [
 
 [[package]]
 name = "imagequant"
-version = "4.0.0"
+version = "4.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f533cecb7eb061d19dee3c938d0e302c02193270497483e1b662a0a1a5e343"
+checksum = "fd9c246b5e902559d1f619b08a08f872cb88b03afe21ca9ec0df146f2fb1d34d"
 dependencies = [
  "arrayvec",
- "fallible_collections",
  "noisy_float",
  "once_cell",
  "rayon",
