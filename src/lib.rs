@@ -345,7 +345,7 @@ impl LastFrameDuration {
 
 /// Encode collected frames
 impl Writer {
-    #[deprecated(note="please don't use, it will be in Settings eventually")]
+    #[deprecated(note = "please don't use, it will be in Settings eventually")]
     #[doc(hidden)]
     pub fn set_extra_effort(&mut self) {
         self.settings.extra_effort = true;
