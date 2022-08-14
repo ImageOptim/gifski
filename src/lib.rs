@@ -613,24 +613,7 @@ impl Writer {
                 Self::remap(liq, remap, liq_image, bg, settings)?
             };
 
-            // Palette may have multiple transparent indices :(
-            let mut transparent_index = None;
-            for (i, p) in image8_pal.iter_mut().enumerate() {
-                if p.a <= 128 {
-                    p.a = 0;
-                    let new_index = i as u8;
-                    if let Some(old_index) = transparent_index {
-                        image8.pixels_mut().filter(|px| **px == new_index).for_each(|px| *px = old_index);
-                    } else {
-                        transparent_index = Some(new_index);
-                    }
-                }
-            }
-
-            // Check that palette is fine and has no duplicate transparent indices
-            debug_assert!(image8_pal.iter().enumerate().all(|(idx, color)| {
-                Some(idx as u8) == transparent_index || color.a > 128 || !image8.pixels().any(|px| px == idx as u8)
-            }));
+            let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
             let (left, top, image8) = if !first_frame && next_frame.is_some() {
                 match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
@@ -665,6 +648,29 @@ impl Writer {
         }
         Ok(())
     }
+}
+
+fn transparent_index_from_palette(image8_pal: &mut [RGBA<u8>], mut image8: ImgRefMut<u8>) -> Option<u8> {
+    // Palette may have multiple transparent indices :(
+    let mut transparent_index = None;
+    for (i, p) in image8_pal.iter_mut().enumerate() {
+        if p.a <= 128 {
+            p.a = 0;
+            let new_index = i as u8;
+            if let Some(old_index) = transparent_index {
+                image8.pixels_mut().filter(|px| **px == new_index).for_each(|px| *px = old_index);
+            } else {
+                transparent_index = Some(new_index);
+            }
+        }
+    }
+
+    // Check that palette is fine and has no duplicate transparent indices
+    debug_assert!(image8_pal.iter().enumerate().all(|(idx, color)| {
+        Some(idx as u8) == transparent_index || color.a > 128 || !image8.pixels().any(|px| px == idx as u8)
+    }));
+
+    transparent_index
 }
 
 fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
