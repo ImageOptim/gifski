@@ -584,7 +584,9 @@ impl Writer {
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: Sender<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
         let mut prev_frame_keeps = false;
         let mut consecutive_frame_num = 0;
-        while let Ok(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, needs_transparency, mut importance_map}) = inputs.recv() {
+        let mut inputs = inputs.into_iter();
+
+        while let Some(DiffMessage {mut image, end_pts, dispose, ordinal_frame_number, needs_transparency, mut importance_map}) = inputs.next() {
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
 
                 if prev_frame_keeps {
@@ -617,30 +619,25 @@ impl Writer {
     }
 
     fn remap_frames(inputs: Receiver<RemapMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
-        let next_frame = inputs.recv().map_err(|_| Error::NoFrames)?;
-        let mut screen = gif_dispose::Screen::new(next_frame.liq_image.width(), next_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
+        let mut inputs = inputs.into_iter().peekable();
+        let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
+        let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
-        let mut next_frame = Some(next_frame);
-
-        let mut first_frame = true;
-        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image}) = {
-            // that's not the while loop, that block gets the next element
-            let curr_frame = next_frame.take();
-            next_frame = inputs.recv().ok();
-            curr_frame
-        } {
+        let mut is_first_frame = true;
+        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image}) = inputs.next() {
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
 
             let (mut image8, mut image8_pal) = {
-                let bg = if !first_frame { Some(screen_after_dispose.pixels()) } else { None };
+                let bg = if !is_first_frame { Some(screen_after_dispose.pixels()) } else { None };
                 Self::remap(liq, remap, liq_image, bg, settings)?
             };
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
-            let (left, top, image8) = if !first_frame && next_frame.is_some() {
+            let next_frame = inputs.peek();
+            let (left, top, image8) = if !is_first_frame && next_frame.is_some() {
                 match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
                     None => continue, // no pixels left
@@ -669,7 +666,7 @@ impl Writer {
                 frame,
             })?;
 
-            first_frame = false;
+            is_first_frame = false;
         }
         Ok(())
     }
