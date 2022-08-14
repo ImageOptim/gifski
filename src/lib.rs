@@ -325,6 +325,27 @@ fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>,
     }
 }
 
+#[derive(Copy, Clone)]
+enum LastFrameDuration {
+    FixedOffset(f64),
+    FrameRate(f64),
+}
+
+impl LastFrameDuration {
+    pub fn value(&self) -> f64 {
+        match self {
+            Self::FixedOffset(val) | Self::FrameRate(val) => *val,
+        }
+    }
+
+    pub fn shift_every_pts_by(&self) -> f64 {
+        match self {
+            Self::FixedOffset(offset) => *offset,
+            _ => 0.,
+        }
+    }
+}
+
 /// Encode collected frames
 impl Writer {
     #[deprecated(note="please don't use, it will be in Settings eventually")]
@@ -408,10 +429,10 @@ impl Writer {
             }
         }
         if n_done == 0 {
-            return Err(Error::NoFrames);
+            Err(Error::NoFrames)
+        } else {
+            enc.finish()
         }
-        enc.finish()?;
-        Ok(())
     }
 
     /// Start writing frames. This function will not return until `Collector` is dropped.
@@ -457,15 +478,23 @@ impl Writer {
     }
 
     fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
-        let (first_frame, first_frame_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
-        let mut prev_frame_pts = 0.;
+        let (first_frame, first_frame_raw_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
+
+        let mut last_frame_duration = if first_frame_raw_pts > 1. / 100. {
+            // this is gifski's weird rule that a non-zero first-frame pts
+            // shifts the whole anim and is the delay of the last frame
+            LastFrameDuration::FixedOffset(first_frame_raw_pts)
+        } else {
+            LastFrameDuration::FrameRate(0.)
+        };
 
         let mut denoiser = Denoiser::new(first_frame.width(), first_frame.height(), settings.quality);
 
         let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
 
-        let mut next_frame = Some((first_frame, first_frame_pts));
+        let mut next_frame = Some((first_frame, first_frame_raw_pts));
         let mut ordinal_frame_number = 0;
+        let mut last_frame_pts = 0.;
         loop {
             // NB! There are two interleaved loops here:
             //  - one to feed the denoiser
@@ -479,9 +508,14 @@ impl Writer {
             let curr_frame = next_frame.take();
             next_frame = inputs.next().transpose()?;
 
-            if let Some((image, mut pts)) = curr_frame {
-                pts -= first_frame_pts;
+            if let Some((image, raw_pts)) = curr_frame {
                 ordinal_frame_number += 1;
+
+                let pts = raw_pts - last_frame_duration.shift_every_pts_by();
+                if let LastFrameDuration::FrameRate(duration) = &mut last_frame_duration {
+                    *duration = pts - last_frame_pts;
+                }
+                last_frame_pts = pts;
 
                 let dispose = if let Some((next, _)) = &next_frame {
                     if next.width() != image.width() || next.height() != image.height() {
@@ -491,7 +525,6 @@ impl Writer {
 
                     // Skip identical frames
                     if next.as_ref() == image.as_ref() {
-                        prev_frame_pts = pts;
                         continue;
                     }
 
@@ -509,20 +542,12 @@ impl Writer {
                     gif::DisposalMethod::Keep
                 };
 
-                // conversion from pts to delay
-                let end_pts = if let Some((_, next_pts)) = next_frame {
-                    debug_assert!(next_pts > 0.);
-                    next_pts - first_frame_pts
-                } else if first_frame_pts > 1. / 100. {
-                    // this is gifski's weird rule that non-zero first-frame pts
-                    // shifts the whole anim and is the delay of the last frame
-                    pts + first_frame_pts
+                let end_pts = if let Some((_, next_raw_pts)) = next_frame {
+                    next_raw_pts - last_frame_duration.shift_every_pts_by()
                 } else {
-                    // otherwise assume steady framerate
-                    (pts + (pts - prev_frame_pts)).max(1./100.)
+                    pts + last_frame_duration.value().max(1. / 100.)
                 };
                 debug_assert!(end_pts > 0.);
-                prev_frame_pts = pts;
 
                 denoiser.push_frame(image.as_ref(), (ordinal_frame_number, end_pts, dispose));
                 if next_frame.is_none() {
