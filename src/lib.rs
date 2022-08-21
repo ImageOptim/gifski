@@ -43,7 +43,12 @@ use std::io::prelude::*;
 use std::thread;
 use std::borrow::Cow;
 
-type DecodedImage = CatResult<(ImgVec<RGBA8>, f64)>;
+struct InputFrame {
+    /// The pixels to encode
+    frame: ImgVec<RGBA8>,
+    /// Time in seconds when to display the frame. First frame should start at 0.
+    presentation_timestamp: f64,
+}
 
 /// Number of repetitions
 #[derive(Debug, Copy, Clone)]
@@ -109,13 +114,13 @@ impl Default for Settings {
 pub struct Collector {
     width: Option<u32>,
     height: Option<u32>,
-    queue: OrdQueue<DecodedImage>,
+    queue: OrdQueue<CatResult<InputFrame>>,
 }
 
 /// Perform GIF writing
 pub struct Writer {
     /// Input frame decoder results
-    queue_iter: Option<OrdQueueIter<DecodedImage>>,
+    queue_iter: Option<OrdQueueIter<CatResult<InputFrame>>>,
     settings: SettingsExt,
 }
 
@@ -208,12 +213,18 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&mut self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image.into(), self.width, self.height)?, presentation_timestamp)))
+        self.queue.push(frame_index, Ok(InputFrame {
+            frame: Self::resized_binary_alpha(image.into(), self.width, self.height)?,
+            presentation_timestamp,
+        }))
     }
 
     pub(crate) fn add_frame_rgba_cow(&mut self, frame_index: usize, image: Img<Cow<[RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, self.width, self.height)?, presentation_timestamp)))
+        self.queue.push(frame_index, Ok(InputFrame {
+            frame: Self::resized_binary_alpha(image, self.width, self.height)?,
+            presentation_timestamp,
+        }))
     }
 
     /// Read and decode a PNG file from disk.
@@ -231,7 +242,10 @@ impl Collector {
             .map_err(|err| Error::PNG(format!("Can't load {}: {}", path.display(), err)))?;
 
         let image = Img::new(image.buffer.into(), image.width, image.height);
-        self.queue.push(frame_index, Ok((Self::resized_binary_alpha(image, width, height)?, presentation_timestamp)))
+        self.queue.push(frame_index, Ok(InputFrame {
+            frame: Self::resized_binary_alpha(image, width, height)?,
+            presentation_timestamp}
+        ))
     }
 
     #[allow(clippy::identity_op)]
@@ -474,21 +488,20 @@ impl Writer {
         Ok(())
     }
 
-    fn make_diffs(mut inputs: OrdQueueIter<DecodedImage>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
-        let (first_frame, first_frame_raw_pts) = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
+    fn make_diffs(mut inputs: OrdQueueIter<CatResult<InputFrame>>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
+        let first_frame = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
 
-        let mut last_frame_duration = if first_frame_raw_pts > 1. / 100. {
+        let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
             // this is gifski's weird rule that a non-zero first-frame pts
             // shifts the whole anim and is the delay of the last frame
-            LastFrameDuration::FixedOffset(first_frame_raw_pts)
+            LastFrameDuration::FixedOffset(first_frame.presentation_timestamp)
         } else {
             LastFrameDuration::FrameRate(0.)
         };
 
-        let mut denoiser = Denoiser::new(first_frame.width(), first_frame.height(), settings.quality);
+        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.quality);
 
-
-        let mut next_frame = Some((first_frame, first_frame_raw_pts));
+        let mut next_frame = Some(first_frame);
         let mut ordinal_frame_number = 0;
         let mut last_frame_pts = 0.;
         loop {
@@ -504,7 +517,7 @@ impl Writer {
             let curr_frame = next_frame.take();
             next_frame = inputs.next().transpose()?;
 
-            if let Some((image, raw_pts)) = curr_frame {
+            if let Some(InputFrame { frame: image, presentation_timestamp: raw_pts }) = curr_frame {
                 ordinal_frame_number += 1;
 
                 let pts = raw_pts - last_frame_duration.shift_every_pts_by();
@@ -617,8 +630,8 @@ impl Writer {
                     liq_image,
                 })?;
                 consecutive_frame_num += 1;
-            prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
-        }
+                prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
+            }
         }
         Ok(())
     }
