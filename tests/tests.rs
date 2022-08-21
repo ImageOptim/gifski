@@ -8,7 +8,7 @@ use gifski::*;
 #[test]
 fn n_frames() {
     for num_frames in 1..=11 {
-        let (mut c, w) = new(Settings::default()).unwrap();
+        let (c, w) = new(Settings::default()).unwrap();
 
         let t = std::thread::spawn(move || {
             for n in 0..num_frames {
@@ -33,7 +33,7 @@ fn n_frames() {
 
 #[test]
 fn all_dupe_frames() {
-    let (mut c, w) = new(Settings::default()).unwrap();
+    let (c, w) = new(Settings::default()).unwrap();
 
     let t = std::thread::spawn(move || {
         c.add_frame_png_file(0, frame_filename(1), 0.1).unwrap();
@@ -59,7 +59,7 @@ fn all_dupe_frames() {
 
 #[test]
 fn all_but_one_dupe_frames() {
-    let (mut c, w) = new(Settings::default()).unwrap();
+    let (c, w) = new(Settings::default()).unwrap();
 
     let t = std::thread::spawn(move || {
         c.add_frame_png_file(0, frame_filename(0), 0.0).unwrap();
