@@ -400,10 +400,9 @@ impl Writer {
         Ok((liq, res, img))
     }
 
-    fn remap(liq: Attributes, mut res: QuantizationResult, mut img: Image<'static>, background: Option<ImgRef<'_, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn remap<'a>(liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         if let Some(bg) = background {
-            let (buf, width, height) = bg.to_contiguous_buf();
-            img.set_background(liq.new_image(buf, width, height, 0.)?)?;
+            img.set_background(Image::new_stride_borrowed(&liq, bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
 
         res.set_dithering_level((settings.quality as f32 / 50.0 - 1.).max(0.))?;
