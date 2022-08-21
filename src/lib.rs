@@ -185,7 +185,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     if settings.width.unwrap_or(0) > 1<<16 || settings.height.unwrap_or(0) > 1<<16 {
         return Err(Error::WrongSize("image size too large".into()));
     }
-    let (queue, queue_iter) = ordqueue::new(4);
+    let (queue, queue_iter) = ordqueue::new(6); // should be sufficient for denoiser lookahead
 
     Ok((
         Collector {
@@ -468,7 +468,7 @@ impl Writer {
 
         let settings_ext = self.settings;
         let settings = self.settings.s;
-        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(4);
+        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(3);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
             Self::make_diffs(decode_queue_recv, quant_queue, &settings)
         })?;
@@ -476,7 +476,7 @@ impl Writer {
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
             Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext)
         })?;
-        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(6);
+        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(4);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;

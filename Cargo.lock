@@ -293,6 +293,7 @@ version = "1.7.1"
 dependencies = [
  "clap",
  "crossbeam-channel",
+ "crossbeam-utils",
  "dunce",
  "ffmpeg-next",
  "gif",
