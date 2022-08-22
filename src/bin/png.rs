@@ -2,6 +2,7 @@ use crate::source::Fps;
 use crate::source::Source;
 use crate::BinResult;
 use gifski::Collector;
+use gifski::Error::ThreadSend;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
@@ -31,7 +32,7 @@ impl Source for Lodecoder {
         // failure on one thread must kill other threads
         let failed = AtomicBool::new(false);
         Ok(crossbeam_utils::thread::scope(|s| {
-            let handles: Vec<_> = [even, odd].into_iter().enumerate().map(|(i, files)| s.builder().name(format!("decode{i}")).spawn(|_| {
+            let handles: Result<Vec<_>, _> = [even, odd].into_iter().enumerate().map(|(i, files)| s.builder().name(format!("decode{i}")).spawn(|_| {
                 files.into_iter()
                     .take_while(|_| !failed.load(SeqCst))
                     .try_for_each(|(i, frame)| {
@@ -40,9 +41,9 @@ impl Source for Lodecoder {
                             e
                         })
                     })
-            }).unwrap()).collect();
+            }).map_err(|_| ThreadSend)).collect();
 
-            handles.into_iter().try_for_each(|h| h.join().expect("panic"))
-        }).expect("panic")?)
+            handles?.into_iter().try_for_each(|h| h.join().map_err(|_| ThreadSend)?)
+        }).map_err(|_| ThreadSend)??)
     }
 }
