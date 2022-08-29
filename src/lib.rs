@@ -212,11 +212,7 @@ impl Collector {
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
-        debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.push(frame_index, Ok(InputFrame {
-            frame: Self::resized_binary_alpha(image.into(), self.width, self.height)?,
-            presentation_timestamp,
-        }))
+        self.add_frame_rgba_cow(frame_index, image.into(), presentation_timestamp)
     }
 
     pub(crate) fn add_frame_rgba_cow(&self, frame_index: usize, image: Img<Cow<'_, [RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
