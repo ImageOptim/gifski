@@ -476,11 +476,11 @@ impl Writer {
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;
-        Self::write_frames(write_queue_recv, encoder, &self.settings.s, reporter)?;
-        diff_thread.join().map_err(|_| Error::ThreadSend)??;
-        quant_thread.join().map_err(|_| Error::ThreadSend)??;
-        remap_thread.join().map_err(|_| Error::ThreadSend)??;
-        Ok(())
+        let res0 = Self::write_frames(write_queue_recv, encoder, &self.settings.s, reporter);
+        let res1 = diff_thread.join().map_err(|_| Error::ThreadSend)?;
+        let res2 = quant_thread.join().map_err(|_| Error::ThreadSend)?;
+        let res3 = remap_thread.join().map_err(|_| Error::ThreadSend)?;
+        combine_res(combine_res(res0, res1), combine_res(res2, res3))
     }
 
     fn make_diffs(mut inputs: OrdQueueIter<CatResult<InputFrame>>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
@@ -706,6 +706,19 @@ fn transparent_index_from_palette(image8_pal: &mut [RGBA<u8>], mut image8: ImgRe
     }));
 
     transparent_index
+}
+
+/// When one thread unexpectedly fails, all other threads fail with Aborted, but that Aborted isn't the relevant cause
+#[inline]
+fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), Error> {
+    use Error::*;
+    match (res1, res2) {
+        (Err(e), Ok(())) | (Ok(()), Err(e)) => Err(e),
+        (Err(ThreadSend), res) | (res, Err(ThreadSend)) => res,
+        (Err(Aborted), res) | (res, Err(Aborted)) => res,
+        (Err(NoFrames), res) | (res, Err(NoFrames)) => res,
+        (_, res2) => res2,
+    }
 }
 
 fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
