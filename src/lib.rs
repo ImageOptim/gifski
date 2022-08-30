@@ -311,7 +311,7 @@ impl Collector {
 fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>, Option<u32>)) -> (usize, usize) {
     match resize_to {
         (None, None) => {
-            let factor = (img_w * img_h + 800 * 600) / (800 * 600);
+            let factor = ((img_w * img_h + 800 * 600 / 2) as f64 / (800 * 600) as f64).sqrt().round() as usize;
             if factor > 1 {
                 (img_w / factor, img_h / factor)
             } else {
