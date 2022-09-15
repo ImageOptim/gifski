@@ -14,7 +14,7 @@ See [releases](https://github.com/ImageOptim/gifski/releases) page for executabl
 
 If you have [Homebrew](https://brew.sh/), you can also get it with `brew install gifski`.
 
-If you have [Rust](https://www.rust-lang.org/install.html) 1.57+, you can also build it from source with [`cargo install gifski`](https://lib.rs/crates/gifski).
+If you have [Rust](https://www.rust-lang.org/install.html) 1.60+, you can also build it from source with [`cargo install gifski`](https://lib.rs/crates/gifski).
 
 ## Usage
 
@@ -49,6 +49,7 @@ See `gifski -h` for more options.
 [See `gifski.h`](https://github.com/ImageOptim/gifski/blob/main/gifski.h) for [the C API](https://docs.rs/gifski/latest/gifski/c_api/#functions). To build the library, run:
 
 ```sh
+rustup update
 cargo build --release
 ```
 
@@ -87,6 +88,7 @@ rustup target add aarch64-apple-ios
 and then to build the library:
 
 ```sh
+rustup update
 cargo build --lib --release --target=aarch64-apple-ios
 ```
 
