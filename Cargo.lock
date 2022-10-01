@@ -353,9 +353,9 @@ dependencies = [
 
 [[package]]
 name = "imgref"
-version = "1.9.3"
+version = "1.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320c73268859c28512b98b9379bcbc6421510154b6cf57d6df87a36617e853a6"
+checksum = "b2cf49df1085dcfb171460e4592597b84abe50d900fb83efb6e41b20fefd6c2c"
 
 [[package]]
 name = "indexmap"
