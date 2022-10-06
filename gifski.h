@@ -255,7 +255,7 @@ GifskiError gifski_set_file_output(gifski *handle, const char *destination_path)
  * The callback function receives 3 arguments:
  *  - size of the buffer to write, in bytes. IT MAY BE ZERO (when it's zero, either do nothing, or flush internal buffers if necessary).
  *  - pointer to the buffer.
- *  - context pointer to arbitary user data, same as passed in to this function.
+ *  - context pointer to arbitrary user data, same as passed in to this function.
  *
  * The callback should return 0 (`GIFSKI_OK`) on success, and non-zero on error.
  *
