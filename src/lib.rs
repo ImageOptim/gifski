@@ -381,7 +381,7 @@ impl Writer {
         liq.set_quality(0, quality)?;
         let (buf, width, height) = image.into_contiguous_buf();
         let mut img = liq.new_image(buf, width, height, 0.)?;
-        // only later remapping tracks which area has been damanged by transparency
+        // only later remapping tracks which area has been damaged by transparency
         // so for previous-transparent background frame the importance map may be invalid
         // because there's a transparent hole in the background not taken into account,
         // and palette may lack colors to fill that hole
@@ -596,8 +596,8 @@ impl Writer {
                 if prev_frame_keeps {
                     // if denoiser says the background didn't change, then believe it
                     // (except higher quality settings, which try to improve it every time)
-                    let bg_keep_likelyhood = (settings.s.quality.saturating_sub(80) / 4) as u32;
-                    if settings.s.fast || (settings.s.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelyhood) {
+                    let bg_keep_likelihood = (settings.s.quality.saturating_sub(80) / 4) as u32;
+                    if settings.s.fast || (settings.s.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelihood) {
                         image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
                     }
                 }
