@@ -28,7 +28,7 @@ impl Source for Lodecoder {
         // add_frame_png_file will block if the buffer is full, and cause all rayon threads to hang.
         let (even, odd): (Vec<_>, Vec<_>) = self.frames.drain(..).enumerate().partition(|(n,_)| n & 1 != 0);
         let dest = &*dest;
-        let fps = self.fps as f64;
+        let fps = f64::from(self.fps);
         // failure on one thread must kill other threads
         let failed = AtomicBool::new(false);
         Ok(crossbeam_utils::thread::scope(|s| {

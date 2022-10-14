@@ -6,7 +6,7 @@ use gifski::{Settings, Repeat};
 mod ffmpeg_source;
 mod png;
 mod source;
-use crate::source::*;
+use crate::source::Source;
 
 use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
@@ -29,9 +29,9 @@ const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files";
 
 fn main() {
     if let Err(e) = bin_main() {
-        eprintln!("error: {}", e);
+        eprintln!("error: {e}");
         if let Some(e) = e.source() {
-            eprintln!("error: {}", e);
+            eprintln!("error: {e}");
         }
         std::process::exit(1);
     }
@@ -147,7 +147,7 @@ fn bin_main() -> BinResult<()> {
     let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
     let speed: f32 = matches.value_of("fast-forward").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
 
-    let rate = source::Fps { speed, fps };
+    let rate = source::Fps { fps, speed };
 
     if settings.quality < 20 {
         if settings.quality < 1 {
@@ -214,7 +214,7 @@ fn bin_main() -> BinResult<()> {
     match output_path {
         DestPath::Path(p) => {
             let file = File::create(p)
-                .map_err(|e| format!("Can't write to {}: {}", p.display(), e))?;
+                .map_err(|e| format!("Can't write to {}: {e}", p.display()))?;
             writer.write(file, progress)?;
         },
         DestPath::Stdout => {
@@ -222,7 +222,7 @@ fn bin_main() -> BinResult<()> {
         },
     };
     decode_thread.join().map_err(|_| "thread died?")??;
-    progress.done(&format!("gifski created {}", output_path));
+    progress.done(&format!("gifski created {output_path}"));
 
     Ok(())
 }

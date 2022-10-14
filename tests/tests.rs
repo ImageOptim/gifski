@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use imgref::ImgVec;
 use imgref::ImgRef;
 use rgb::RGBA8;
-use gifski::*;
+use gifski::{Settings, new, progress};
 
 #[test]
 fn n_frames() {
@@ -102,12 +102,12 @@ fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(&gif::Frame, ImgRef<RG
 #[track_caller]
 fn assert_images_eq(a: ImgRef<RGBA8>, b: ImgRef<RGBA8>, max_diff: f64) {
     let diff = a.pixels().zip(b.pixels()).map(|(a,b)| {
-        let a = a.map(|c| c as i32);
-        let b = b.map(|c| c as i32);
+        let a = a.map(i32::from);
+        let b = b.map(i32::from);
         let d = a - b;
         (d.r * d.r +
          d.g * d.g +
          d.b * d.b) as u64
     }).sum::<u64>() as f64 / (a.width() * a.height()) as f64;
-    assert!(diff <= max_diff, "{} diff > {}", diff, max_diff);
+    assert!(diff <= max_diff, "{diff} diff > {max_diff}");
 }
