@@ -1,6 +1,7 @@
 use crate::PushInCapacity;
 pub use imgref::ImgRef;
 use imgref::ImgVec;
+use loop9::loop9_img;
 use rgb::ComponentMap;
 use rgb::RGB8;
 pub use rgb::RGBA8;
@@ -12,6 +13,7 @@ struct Acc {
     r: [u8; LOOKAHEAD],
     g: [u8; LOOKAHEAD],
     b: [u8; LOOKAHEAD],
+    blur: [RGB8; LOOKAHEAD],
     alpha_bits: u8,
     can_stay_for: u8,
     stayed_for: u8,
@@ -19,21 +21,26 @@ struct Acc {
 }
 
 impl Acc {
+    /// Actual pixel + blurred pixel
     #[inline(always)]
-    pub fn get(&self, idx: usize) -> Option<RGB8> {
+    pub fn get(&self, idx: usize) -> Option<(RGB8, RGB8)> {
         if self.alpha_bits & (1 << idx) == 0 {
-            Some(RGB8::new(self.r[idx], self.g[idx], self.b[idx]))
+            Some((
+                RGB8::new(self.r[idx], self.g[idx], self.b[idx]),
+                self.blur[idx],
+            ))
         } else {
             None
         }
     }
 
     #[inline(always)]
-    pub fn append(&mut self, val: RGBA8) {
+    pub fn append(&mut self, val: RGBA8, val_blur: RGB8) {
         for n in 1..LOOKAHEAD {
             self.r[n - 1] = self.r[n];
             self.g[n - 1] = self.g[n];
             self.b[n - 1] = self.b[n];
+            self.blur[n - 1] = self.blur[n];
         }
         self.alpha_bits >>= 1;
 
@@ -43,6 +50,7 @@ impl Acc {
             self.r[LOOKAHEAD - 1] = val.r;
             self.g[LOOKAHEAD - 1] = val.g;
             self.b[LOOKAHEAD - 1] = val.b;
+            self.blur[LOOKAHEAD - 1] = val_blur;
         }
     }
 }
@@ -79,6 +87,7 @@ impl<T> Denoiser<T> {
             r: Default::default(),
             g: Default::default(),
             b: Default::default(),
+            blur: Default::default(),
             alpha_bits: (1 << LOOKAHEAD) - 1,
             bg_set: Default::default(),
             stayed_for: 0,
@@ -93,9 +102,9 @@ impl<T> Denoiser<T> {
         }
     }
 
-    fn quick_append(&mut self, frame: ImgRef<RGBA8>) {
-        for (acc, src) in self.splat.pixels_mut().zip(frame.pixels()) {
-            acc.append(src);
+    fn quick_append(&mut self, frame: ImgRef<RGBA8>, frame_blurred: ImgRef<RGB8>) {
+        for ((acc, src), src_blur) in self.splat.pixels_mut().zip(frame.pixels()).zip(frame_blurred.pixels()) {
+            acc.append(src, src_blur);
         }
     }
 
@@ -106,7 +115,7 @@ impl<T> Denoiser<T> {
             let mut imp_map1 = Vec::with_capacity(self.splat.width() * self.splat.height());
 
             for acc in self.splat.pixels_mut() {
-                acc.append(RGBA8::new(0, 0, 0, 0));
+                acc.append(RGBA8::new(0, 0, 0, 0), RGB8::new(0, 0, 0));
                 let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
                 median1.push_in_cap(m);
                 imp_map1.push_in_cap(i);
@@ -129,17 +138,19 @@ impl<T> Denoiser<T> {
 
         self.metadatas.insert(0, frame_metadata);
 
+        let frame_blurred = smart_blur(frame);
+
         self.frames += 1;
         // Can't output anything yet
         if self.frames < LOOKAHEAD {
-            self.quick_append(frame);
+            self.quick_append(frame, frame_blurred.as_ref());
             return Ok(());
         }
 
         let mut median = Vec::with_capacity(frame.width() * frame.height());
         let mut imp_map = Vec::with_capacity(frame.width() * frame.height());
-        for (acc, src) in self.splat.pixels_mut().zip(frame.pixels()) {
-            acc.append(src);
+        for ((acc, src), src_blur) in self.splat.pixels_mut().zip(frame.pixels()).zip(frame_blurred.pixels()) {
+            acc.append(src, src_blur);
 
             let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
             median.push_in_cap(m);
@@ -167,10 +178,14 @@ impl<T> Denoiser<T> {
 impl Acc {
     fn next_pixel(&mut self, threshold: u32, odd_frame: bool) -> (RGBA8, u8) {
         // No previous bg set, so find a new one
-        if let Some(curr) = self.get(0) {
+        if let Some((curr, curr_blur)) = self.get(0) {
             let my_turn = cohort(curr) != odd_frame;
             let threshold = if my_turn { threshold } else { threshold * 2 };
-            let diff_with_bg = if self.bg_set.a > 0 { color_diff(self.bg_set.rgb(), curr) } else { 1<<20 };
+            let diff_with_bg = if self.bg_set.a > 0 {
+                let bg = color_diff(self.bg_set.rgb(), curr);
+                let bg_blur = color_diff(self.bg_set.rgb(), curr_blur);
+                if bg < bg_blur { bg } else { (bg + bg_blur) / 2 }
+            } else { 1<<20 };
 
             if self.stayed_for < self.can_stay_for {
                 self.stayed_for += 1;
@@ -198,7 +213,7 @@ impl Acc {
             // See how long this bg can stay
             let mut stays_frames = 0;
             for i in 1..LOOKAHEAD {
-                if self.get(i).map_or(false, |c| color_diff(c, curr) < threshold) {
+                if self.get(i).map_or(false, |(c, blurred)| color_diff(c, curr) < threshold || color_diff(blurred, curr_blur) < threshold) {
                     stays_frames = i;
                 } else {
                     break;
@@ -240,6 +255,44 @@ impl Acc {
             (RGBA8::new(0,0,0,0), imp)
         }
     }
+}
+
+/// Median of 9 neighboring pixels
+macro_rules! median_channel {
+    ($top:expr, $mid:expr, $bot:expr, $chan:ident) => {
+        *[
+            if $top.prev.a > 0 { $top.prev.$chan } else { $mid.curr.$chan },
+            if $top.curr.a > 0 { $top.curr.$chan } else { $mid.curr.$chan },
+            if $top.next.a > 0 { $top.next.$chan } else { $mid.curr.$chan },
+            if $mid.prev.a > 0 { $mid.prev.$chan } else { $mid.curr.$chan },
+            $mid.curr.$chan, // if the center pixel is transparent, the result won't be used
+            $mid.curr.$chan, // more weight on the center
+            if $mid.next.a > 0 { $mid.next.$chan } else { $mid.curr.$chan },
+            if $bot.prev.a > 0 { $bot.prev.$chan } else { $mid.curr.$chan },
+            if $bot.curr.a > 0 { $bot.curr.$chan } else { $mid.curr.$chan },
+            if $bot.next.a > 0 { $bot.next.$chan } else { $mid.curr.$chan },
+        ].select_nth_unstable(5).1
+    }
+}
+
+fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
+    let mut out = Vec::with_capacity(frame.width() * frame.height());
+    loop9_img(frame, |_,_, top, mid, bot| {
+        out.push_in_cap(if mid.curr.a > 0 {
+            let median_r = median_channel!(top, mid, bot, r);
+            let median_g = median_channel!(top, mid, bot, g);
+            let median_b = median_channel!(top, mid, bot, b);
+
+            let blurred = RGB8::new(median_r, median_g, median_b);
+            // diff limit, because median removes thin lines too
+            if color_diff(mid.curr.rgb(), blurred) < 16*16*6 {
+                blurred
+            } else {
+                mid.curr.rgb()
+            }
+        } else { RGB8::new(255,0,255) });
+    });
+    ImgVec::new(out, frame.width(), frame.height())
 }
 
 /// The idea is to split colors into two arbitrary groups, and flip-flop weight between them.
