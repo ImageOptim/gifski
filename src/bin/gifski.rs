@@ -217,7 +217,7 @@ fn bin_main() -> BinResult<()> {
     let (mut collector, mut writer) = gifski::new(settings)?;
     if extra {
         #[allow(deprecated)]
-        writer.set_extra_effort();
+        writer.set_extra_effort(true);
     }
     if let Some(motion_quality) = motion_quality {
         #[allow(deprecated)]

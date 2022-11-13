@@ -363,8 +363,8 @@ impl LastFrameDuration {
 impl Writer {
     #[deprecated(note = "please don't use, it will be in Settings eventually")]
     #[doc(hidden)]
-    pub fn set_extra_effort(&mut self) {
-        self.settings.extra_effort = true;
+    pub fn set_extra_effort(&mut self, enabled: bool) {
+        self.settings.extra_effort = enabled;
     }
 
     #[deprecated(note = "please don't use, it will be in Settings eventually")]

@@ -128,6 +128,60 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
     }
 }
 
+/// Quality 1-100 of temporal denoising. Lower values reduce motion. Defaults to `settings.quality`.
+///
+/// Only valid immediately after calling `gifski_new`, before any frames are added.
+#[no_mangle]
+pub unsafe extern "C" fn gifski_set_motion_quality(handle: *mut GifskiHandle, quality: u8) -> GifskiError {
+    let g = match borrow(handle) {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
+    };
+    if let Some(w) = &mut *g.writer.lock().unwrap() {
+        #[allow(deprecated)]
+        w.set_motion_quality(quality);
+        GifskiError::OK
+    } else {
+        GifskiError::INVALID_STATE
+    }
+}
+
+/// Quality 1-100 of gifsicle compression. Lower values add noise. Defaults to `settings.quality`.
+/// Has no effect if the `gifsicle` feature hasn't been enabled.
+/// Only valid immediately after calling `gifski_new`, before any frames are added.
+#[no_mangle]
+pub unsafe extern "C" fn gifski_set_lossy_quality(handle: *mut GifskiHandle, quality: u8) -> GifskiError {
+    let g = match borrow(handle) {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
+    };
+    if let Some(w) = &mut *g.writer.lock().unwrap() {
+        #[allow(deprecated)]
+        w.set_lossy_quality(quality);
+        GifskiError::OK
+    } else {
+        GifskiError::INVALID_STATE
+    }
+}
+
+/// If `true`, encoding will be significantly slower, but may look a bit better.
+///
+/// Only valid immediately after calling `gifski_new`, before any frames are added.
+#[no_mangle]
+pub unsafe extern "C" fn gifski_set_extra_effort(handle: *mut GifskiHandle, extra: bool) -> GifskiError {
+    let g = match borrow(handle) {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
+    };
+    if let Some(w) = &mut *g.writer.lock().unwrap() {
+        #[allow(deprecated)]
+        w.set_extra_effort(extra);
+        GifskiError::OK
+    } else {
+        GifskiError::INVALID_STATE
+    }
+}
+
 /// Adds a frame to the animation. This function is asynchronous.
 ///
 /// File path must be valid UTF-8.
