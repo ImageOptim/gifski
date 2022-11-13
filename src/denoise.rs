@@ -106,7 +106,7 @@ impl<T> Denoiser<T> {
 
             for acc in self.splat.pixels_mut() {
                 acc.append(RGBA8::new(0, 0, 0, 0));
-                let (m, i) = Self::acc(acc, self.threshold, self.frames & 1 != 0);
+                let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
                 median1.push(m);
                 imp_map1.push(i);
             }
@@ -140,7 +140,7 @@ impl<T> Denoiser<T> {
         for (acc, src) in self.splat.pixels_mut().zip(frame.pixels()) {
             acc.append(src);
 
-            let (m, i) = Self::acc(acc, self.threshold, self.frames & 1 != 0);
+            let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
             median.push(m);
             imp_map.push(i);
         }
@@ -161,41 +161,43 @@ impl<T> Denoiser<T> {
             Denoised::Done
         }
     }
+}
 
-    fn acc(acc: &mut Acc, threshold: u32, odd_frame: bool) -> (RGBA8, u8) {
+impl Acc {
+    fn next_pixel(&mut self, threshold: u32, odd_frame: bool) -> (RGBA8, u8) {
         // No previous bg set, so find a new one
-        if let Some(curr) = acc.get(0) {
+        if let Some(curr) = self.get(0) {
             let my_turn = cohort(curr) != odd_frame;
             let threshold = if my_turn { threshold } else { threshold * 2 };
-            let diff_with_bg = if acc.bg_set.a > 0 { color_diff(acc.bg_set.rgb(), curr) } else { 1<<20 };
+            let diff_with_bg = if self.bg_set.a > 0 { color_diff(self.bg_set.rgb(), curr) } else { 1<<20 };
 
-            if acc.stayed_for < acc.can_stay_for {
-                acc.stayed_for += 1;
+            if self.stayed_for < self.can_stay_for {
+                self.stayed_for += 1;
                 // If this is the second, corrective frame, then
                 // give it weight proportional to its staying duration
-                let max = if acc.stayed_for > 1 { 0 } else {
-                    [0, 40, 80, 100, 110][acc.can_stay_for.min(4) as usize]
+                let max = if self.stayed_for > 1 { 0 } else {
+                    [0, 40, 80, 100, 110][self.can_stay_for.min(4) as usize]
                 };
                 // min == 0 may wipe pixels totally clear, so give them at least a second chance,
                 // if quality setting allows
                 let min = match threshold {
-                    0..=300 if acc.stayed_for <= 3 => 1, // q >= 75
-                    300..=500 if acc.stayed_for <= 2 => 1,
-                    400..=900 if acc.stayed_for <= 1 => 1, // q >= 50
+                    0..=300 if self.stayed_for <= 3 => 1, // q >= 75
+                    300..=500 if self.stayed_for <= 2 => 1,
+                    400..=900 if self.stayed_for <= 1 => 1, // q >= 50
                     _ => 0,
                 };
-                return (acc.bg_set, pixel_importance(diff_with_bg, threshold, min, max));
+                return (self.bg_set, pixel_importance(diff_with_bg, threshold, min, max));
             }
 
             // if it's still good, keep rolling with it
             if diff_with_bg < threshold {
-                return (acc.bg_set, 0);
+                return (self.bg_set, 0);
             }
 
             // See how long this bg can stay
             let mut stays_frames = 0;
             for i in 1..LOOKAHEAD {
-                if acc.get(i).map_or(false, |c| color_diff(c, curr) < threshold) {
+                if self.get(i).map_or(false, |c| color_diff(c, curr) < threshold) {
                     stays_frames = i;
                 } else {
                     break;
@@ -204,13 +206,13 @@ impl<T> Denoiser<T> {
 
             // fast path for regular changing pixel
             if stays_frames == 0 {
-                acc.bg_set = curr.alpha(255);
-                return (acc.bg_set, pixel_importance(diff_with_bg, threshold, 10, 110));
+                self.bg_set = curr.alpha(255);
+                return (self.bg_set, pixel_importance(diff_with_bg, threshold, 10, 110));
             }
             let smoothed_curr = RGB8::new(
-                get_median(&acc.r, stays_frames + 1),
-                get_median(&acc.g, stays_frames + 1),
-                get_median(&acc.b, stays_frames + 1),
+                get_median(&self.r, stays_frames + 1),
+                get_median(&self.g, stays_frames + 1),
+                get_median(&self.b, stays_frames + 1),
             );
 
             let imp = if stays_frames <= 1 {
@@ -221,17 +223,17 @@ impl<T> Denoiser<T> {
                 pixel_importance(diff_with_bg, threshold, 50, 205)
             };
 
-            acc.bg_set = smoothed_curr.alpha(255);
+            self.bg_set = smoothed_curr.alpha(255);
             // shorten stay-for to use overlapping ranges for smoother transitions
-            acc.can_stay_for = (stays_frames as u8).min(LOOKAHEAD as u8 - 1);
-            acc.stayed_for = 0;
-            (acc.bg_set, imp)
+            self.can_stay_for = (stays_frames as u8).min(LOOKAHEAD as u8 - 1);
+            self.stayed_for = 0;
+            (self.bg_set, imp)
         } else {
             // pixels with importance == 0 are totally ignored, but that could skip frames
             // which need to set background to clear
-            let imp = if acc.bg_set.a > 0 {
-                acc.bg_set.a = 0;
-                acc.can_stay_for = 0;
+            let imp = if self.bg_set.a > 0 {
+                self.bg_set.a = 0;
+                self.can_stay_for = 0;
                 1
             } else { 0 };
             (RGBA8::new(0,0,0,0), imp)
