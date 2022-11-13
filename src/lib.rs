@@ -77,6 +77,8 @@ pub struct Settings {
 struct SettingsExt {
     pub s: Settings,
     pub extra_effort: bool,
+    pub motion_quality: u8,
+    pub giflossy_quality: u8,
 }
 
 impl Settings {
@@ -90,9 +92,11 @@ impl Settings {
     pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
         dimensions_for_image((width, height), (self.width, self.height))
     }
+}
 
+impl SettingsExt {
     pub(crate) fn gifsicle_loss(&self) -> u32 {
-        (100. / 6. - self.quality as f32 / 6.).powf(1.75).ceil() as u32
+        (100. / 5. - self.giflossy_quality as f32 / 5.).powf(1.8).ceil() as u32 + 10
     }
 }
 
@@ -196,8 +200,10 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         Writer {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
-                s: settings,
+                motion_quality: settings.quality,
+                giflossy_quality: settings.quality,
                 extra_effort: false,
+                s: settings,
             }
         },
     ))
@@ -361,12 +367,25 @@ impl Writer {
         self.settings.extra_effort = true;
     }
 
+    #[deprecated(note = "please don't use, it will be in Settings eventually")]
+    #[doc(hidden)]
+    pub fn set_motion_quality(&mut self, q: u8) {
+        self.settings.motion_quality = q;
+    }
+
+    #[deprecated(note = "please don't use, it will be in Settings eventually")]
+    #[doc(hidden)]
+    pub fn set_lossy_quality(&mut self, q: u8) {
+        self.settings.giflossy_quality = q;
+    }
+
     /// `importance_map` is computed from previous and next frame.
     /// Improves quality of pixels visible for longer.
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, SettingsExt {s: settings, extra_effort}: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
+        let SettingsExt {s: settings, extra_effort, motion_quality: _, giflossy_quality: _} = settings;
         let mut liq = Attributes::new();
         if settings.fast {
             liq.set_speed(10)?;
@@ -451,8 +470,8 @@ impl Writer {
 
         #[cfg(feature = "gifsicle")]
         {
-            if self.settings.s.quality < 100 {
-                let mut gifsicle = encodegifsicle::Gifsicle::new(self.settings.s.gifsicle_loss(), &mut writer);
+            if self.settings.giflossy_quality < 100 {
+                let mut gifsicle = encodegifsicle::Gifsicle::new(self.settings.gifsicle_loss(), &mut writer);
                 return self.write_with_encoder(&mut gifsicle, reporter);
             }
         }
@@ -466,7 +485,7 @@ impl Writer {
         let settings = self.settings.s;
         let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(3);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
-            Self::make_diffs(decode_queue_recv, quant_queue, &settings)
+            Self::make_diffs(decode_queue_recv, quant_queue, &settings_ext)
         })?;
         let (remap_queue, remap_queue_recv) = crossbeam_channel::bounded(8);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
@@ -483,7 +502,7 @@ impl Writer {
         combine_res(combine_res(res0, res1), combine_res(res2, res3))
     }
 
-    fn make_diffs(mut inputs: OrdQueueIter<CatResult<InputFrame>>, quant_queue: Sender<DiffMessage>, settings: &Settings) -> CatResult<()> {
+    fn make_diffs(mut inputs: OrdQueueIter<CatResult<InputFrame>>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
         let first_frame = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -494,7 +513,7 @@ impl Writer {
             LastFrameDuration::FrameRate(0.)
         };
 
-        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.quality);
+        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.motion_quality);
 
         let mut next_frame = Some(first_frame);
         let mut ordinal_frame_number = 0;
@@ -604,7 +623,7 @@ impl Writer {
 
                 let needs_transparency = consecutive_frame_num > 0 || (consecutive_frame_num == 0 && first_frame_has_transparency);
                 let (liq, remap, liq_image) = Self::quantize(image, &importance_map, consecutive_frame_num == 0, needs_transparency, prev_frame_keeps, settings)?;
-                let max_loss = settings.s.gifsicle_loss();
+                let max_loss = settings.gifsicle_loss();
                 for imp in &mut importance_map {
                     // encoding assumes rgba background looks like encoded background, which is not true for lossy
                     *imp = ((256 - (*imp) as u32) * max_loss / 256).min(255) as u8;

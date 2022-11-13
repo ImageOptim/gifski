@@ -85,6 +85,16 @@ fn bin_main() -> BinResult<()> {
                             .takes_value(true)
                             .default_value("90")
                             .help("Lower quality may give smaller file"))
+                        .arg(Arg::new("motion-quality")
+                            .long("motion-quality")
+                            .value_name("1-100")
+                            .takes_value(true)
+                            .help("Lower values reduce motion"))
+                        .arg(Arg::new("lossy-quality")
+                            .long("lossy-quality")
+                            .value_name("1-100")
+                            .takes_value(true)
+                            .help("Lower values introduce noise and streaks"))
                         .arg(Arg::new("width")
                             .long("width")
                             .short('W')
@@ -136,6 +146,8 @@ fn bin_main() -> BinResult<()> {
     }
 
     let extra = matches.is_present("extra");
+    let motion_quality = parse_opt(matches.value_of("motion-quality")).map_err(|_| "Invalid motion quality")?;
+    let lossy_quality = parse_opt(matches.value_of("lossy-quality")).map_err(|_| "Invalid lossy quality")?;
     let settings = Settings {
         width,
         height,
@@ -206,6 +218,14 @@ fn bin_main() -> BinResult<()> {
     if extra {
         #[allow(deprecated)]
         writer.set_extra_effort();
+    }
+    if let Some(motion_quality) = motion_quality {
+        #[allow(deprecated)]
+        writer.set_motion_quality(motion_quality);
+    }
+    if let Some(lossy_quality) = lossy_quality {
+        #[allow(deprecated)]
+        writer.set_lossy_quality(lossy_quality);
     }
     let decode_thread = thread::Builder::new().name("decode".into()).spawn(move || {
         decoder.collect(&mut collector)
