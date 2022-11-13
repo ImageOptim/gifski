@@ -1,3 +1,4 @@
+use crate::PushInCapacity;
 pub use imgref::ImgRef;
 use imgref::ImgVec;
 use rgb::ComponentMap;
@@ -107,8 +108,8 @@ impl<T> Denoiser<T> {
             for acc in self.splat.pixels_mut() {
                 acc.append(RGBA8::new(0, 0, 0, 0));
                 let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
-                median1.push(m);
-                imp_map1.push(i);
+                median1.push_in_cap(m);
+                imp_map1.push_in_cap(i);
             }
 
             // may need to push down first if there were not enough frames to fill the pipeline
@@ -141,8 +142,8 @@ impl<T> Denoiser<T> {
             acc.append(src);
 
             let (m, i) = acc.next_pixel(self.threshold, self.frames & 1 != 0);
-            median.push(m);
-            imp_map.push(i);
+            median.push_in_cap(m);
+            imp_map.push_in_cap(i);
         }
 
         let median = ImgVec::new(median, frame.width(), frame.height());

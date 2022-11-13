@@ -265,7 +265,7 @@ impl Collector {
         // dithering of anti-aliased edges can look very fuzzy, so disable it near the edges
         let mut anti_aliasing = Vec::with_capacity(image.width() * image.height());
         loop9::loop9(image.as_ref(), 0, 0, image.width(), image.height(), |_x,_y, top, mid, bot| {
-            anti_aliasing.push(if mid.curr.a == 255 || mid.curr.a == 0 {
+            anti_aliasing.push_in_cap(if mid.curr.a == 255 || mid.curr.a == 0 {
                 false
             } else {
                 fn is_edge(a: u8, b: u8) -> bool {
@@ -759,4 +759,19 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
     }
 
     Some((0, top as _, image8))
+}
+
+trait PushInCapacity<T> {
+    fn push_in_cap(&mut self, val: T);
+}
+
+impl<T> PushInCapacity<T> for Vec<T> {
+    #[track_caller]
+    #[inline(always)]
+    fn push_in_cap(&mut self, val: T) {
+        debug_assert!(self.capacity() != self.len());
+        if self.capacity() != self.len() {
+            self.push(val);
+        }
+    }
 }
