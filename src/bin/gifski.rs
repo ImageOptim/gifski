@@ -138,12 +138,11 @@ fn bin_main() -> BinResult<()> {
     let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;
     let height = parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?;
     let repeat_int = parse_opt(matches.value_of("repeat")).map_err(|_| "Invalid repeat count")?.unwrap_or(0) as i16;
-    let repeat;
-    match repeat_int {
-        -1 => repeat = Repeat::Finite(0),
-        0 => repeat = Repeat::Infinite,
-        _ => repeat = Repeat::Finite(repeat_int as u16),
-    }
+    let repeat = match repeat_int {
+        -1 => Repeat::Finite(0),
+        0 => Repeat::Infinite,
+        _ => Repeat::Finite(repeat_int as u16),
+    };
 
     let extra = matches.is_present("extra");
     let motion_quality = parse_opt(matches.value_of("motion-quality")).map_err(|_| "Invalid motion quality")?;
@@ -197,7 +196,7 @@ fn bin_main() -> BinResult<()> {
         if speed != 1.0 {
             return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
         }
-        Box::new(png::Lodecoder::new(frames, &rate))
+        Box::new(png::Lodecoder::new(frames, rate))
     };
 
     let mut pb;

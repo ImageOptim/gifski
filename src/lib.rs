@@ -27,7 +27,7 @@ use rgb::*;
 mod error;
 pub use crate::error::*;
 mod ordqueue;
-use crate::ordqueue::*;
+use crate::ordqueue::{OrdQueue, OrdQueueIter};
 pub mod progress;
 use crate::progress::*;
 pub mod c_api;
@@ -85,18 +85,18 @@ impl Settings {
     /// quality is used in other places, like gifsicle or frame differences,
     /// and it's better to lower quality there before ruining quantization
     pub(crate) fn color_quality(&self) -> u8 {
-        (self.quality as u16 * 4 / 3).min(100) as u8
+        (u16::from(self.quality) * 4 / 3).min(100) as u8
     }
 
-    /// add_frame is going to resize the images to this size.
-    pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
+    /// `add_frame` is going to resize the images to this size.
+    #[must_use] pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
         dimensions_for_image((width, height), (self.width, self.height))
     }
 }
 
 impl SettingsExt {
     pub(crate) fn gifsicle_loss(&self) -> u32 {
-        (100. / 5. - self.giflossy_quality as f32 / 5.).powf(1.8).ceil() as u32 + 10
+        (100. / 5. - f32::from(self.giflossy_quality) / 5.).powf(1.8).ceil() as u32 + 10
     }
 }
 
@@ -241,7 +241,7 @@ impl Collector {
         let width = self.width;
         let height = self.height;
         let image = lodepng::decode32_file(&path)
-            .map_err(|err| Error::PNG(format!("Can't load {}: {}", path.display(), err)))?;
+            .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
 
         let image = Img::new(image.buffer.into(), image.width, image.height);
         self.queue.push(frame_index, Ok(InputFrame {
@@ -312,12 +312,12 @@ impl Collector {
     }
 }
 
-/// add_frame is going to resize the image to this size.
+/// `add_frame` is going to resize the image to this size.
 /// The `Option` args are user-specified max width and max height
 fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>, Option<u32>)) -> (usize, usize) {
     match resize_to {
         (None, None) => {
-            let factor = ((img_w * img_h + 800 * 600 / 2) as f64 / (800 * 600) as f64).sqrt().round() as usize;
+            let factor = ((img_w * img_h + 800 * 600 / 2) as f64 / f64::from(800 * 600)).sqrt().round() as usize;
             if factor > 1 {
                 (img_w / factor, img_h / factor)
             } else {
@@ -354,7 +354,7 @@ impl LastFrameDuration {
     pub fn shift_every_pts_by(&self) -> f64 {
         match self {
             Self::FixedOffset(offset) => *offset,
-            _ => 0.,
+            Self::FrameRate(_) => 0.,
         }
     }
 }
@@ -420,7 +420,7 @@ impl Writer {
             img.set_background(Image::new_stride_borrowed(&liq, bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
 
-        res.set_dithering_level((settings.quality as f32 / 50.0 - 1.).max(0.))?;
+        res.set_dithering_level((f32::from(settings.quality) / 50.0 - 1.).max(0.))?;
 
         let (pal, pal_img) = res.remapped(&mut img)?;
         debug_assert_eq!(img.width() * img.height(), pal_img.len());
@@ -541,7 +541,7 @@ impl Writer {
                 last_frame_pts = pts;
 
                 denoiser.push_frame(image.as_ref(), (ordinal_frame_number, pts, last_frame_duration)).map_err(|_| {
-                    Error::WrongSize(format!("Frame {} has wrong size ({}×{})", ordinal_frame_number, image.width(), image.height()))
+                    Error::WrongSize(format!("Frame {ordinal_frame_number} has wrong size ({}×{})", image.width(), image.height()))
                 })?;
                 if next_frame.is_none() {
                     denoiser.flush();
@@ -615,7 +615,7 @@ impl Writer {
                 if prev_frame_keeps {
                     // if denoiser says the background didn't change, then believe it
                     // (except higher quality settings, which try to improve it every time)
-                    let bg_keep_likelihood = (settings.s.quality.saturating_sub(80) / 4) as u32;
+                    let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
                     if settings.s.fast || (settings.s.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelihood) {
                         image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
                     }
@@ -626,7 +626,7 @@ impl Writer {
                 let max_loss = settings.gifsicle_loss();
                 for imp in &mut importance_map {
                     // encoding assumes rgba background looks like encoded background, which is not true for lossy
-                    *imp = ((256 - (*imp) as u32) * max_loss / 256).min(255) as u8;
+                    *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
                 }
 
                 let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {

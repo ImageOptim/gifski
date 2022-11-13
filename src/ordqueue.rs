@@ -1,4 +1,4 @@
-use crate::error::*;
+use crate::error::CatResult;
 use crossbeam_channel::{Receiver, Sender};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;

@@ -252,14 +252,14 @@ fn cohort(color: RGB8) -> bool {
 /// importance = how much it exceeds percetible threshold
 #[inline(always)]
 fn pixel_importance(diff_with_bg: u32, threshold: u32, min: u8, max: u8) -> u8 {
-    assert!((min as u32 + max as u32) <= 255);
+    assert!((u32::from(min) + u32::from(max)) <= 255);
     let exceeds = diff_with_bg.saturating_sub(threshold);
-    min + (exceeds.saturating_mul(max as u32) / (threshold.saturating_mul(48))).min(max as u32) as u8
+    min + (exceeds.saturating_mul(u32::from(max)) / (threshold.saturating_mul(48))).min(u32::from(max)) as u8
 }
 
 #[inline(always)]
 fn avg8(a: u8, b: u8) -> u8 {
-    ((a as u16 + b as u16) / 2) as u8
+    ((u16::from(a) + u16::from(b)) / 2) as u8
 }
 
 #[inline(always)]

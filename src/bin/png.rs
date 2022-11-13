@@ -13,7 +13,7 @@ pub struct Lodecoder {
 }
 
 impl Lodecoder {
-    pub fn new(frames: Vec<PathBuf>, params: &Fps) -> Self {
+    pub fn new(frames: Vec<PathBuf>, params: Fps) -> Self {
         Self { frames, fps: params.fps }
     }
 }

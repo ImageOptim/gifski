@@ -56,7 +56,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 mod c_api_error;
-use self::c_api_error::*;
+use self::c_api_error::GifskiError;
 
 /// Settings for creating a new encoder instance. See `gifski_new`
 #[repr(C)]
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
             write_thread: Mutex::new((false, None)),
             collector: Mutex::new(Some(collector)),
             progress: Mutex::new(None),
-        })) as *const GifskiHandle
+        })).cast::<GifskiHandle>()
     } else {
         ptr::null_mut()
     }
@@ -295,7 +295,7 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
         g: p.g,
         b: p.b,
         a: p.a,
-    })).collect(), width as usize, height as usize);
+    })).collect(), width, height as usize);
     add_frame_rgba(handle, frame_number, img.into(), presentation_timestamp)
 }
 
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
         return GifskiError::INVALID_INPUT;
     }
     let pixels = slice::from_raw_parts(pixels, stride * height as usize);
-    let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.alpha(255))).collect(), width as usize, height as usize);
+    let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.alpha(255))).collect(), width, height as usize);
     add_frame_rgba(handle, frame_number, img.into(), presentation_timestamp)
 }
 
@@ -477,7 +477,7 @@ fn gifski_write_thread_start<W: 'static +  Write + Send>(g: &GifskiHandleInterna
 }
 
 unsafe fn borrow<'a>(handle: *const GifskiHandle) -> Option<&'a GifskiHandleInternal> {
-    let g = handle as *const GifskiHandleInternal;
+    let g = handle.cast::<GifskiHandleInternal>();
     g.as_ref()
 }
 
@@ -496,7 +496,7 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
     if g.is_null() {
         return GifskiError::NULL_ARG;
     }
-    let g = Arc::from_raw(g as *const GifskiHandleInternal);
+    let g = Arc::from_raw(g.cast::<GifskiHandleInternal>());
 
     // dropping of the collector (if any) completes writing
     *g.collector.lock().unwrap() = None;
@@ -524,20 +524,20 @@ fn c_cb() {
     assert!(!g.is_null());
     let mut write_called = false;
     unsafe extern "C" fn cb(_s: usize, _buf: *const u8, user_data: *mut c_void) -> c_int {
-        let write_called = user_data as *mut bool;
+        let write_called = user_data.cast::<bool>();
         *write_called = true;
         0
     }
     let mut progress_called = 0u32;
     unsafe extern "C" fn pcb(user_data: *mut c_void) -> c_int {
-        let progress_called = user_data as *mut u32;
+        let progress_called = user_data.cast::<u32>();
         *progress_called += 1;
         1
     }
     unsafe {
-        assert_eq!(GifskiError::OK, gifski_set_progress_callback(g, pcb, (&mut progress_called) as *mut _ as _));
-        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), (&mut write_called) as *mut _ as _));
-        assert_eq!(GifskiError::INVALID_STATE, gifski_set_progress_callback(g, pcb, (&mut progress_called) as *mut _ as _));
+        assert_eq!(GifskiError::OK, gifski_set_progress_callback(g, pcb, ptr::addr_of_mut!(progress_called).cast()));
+        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), ptr::addr_of_mut!(write_called).cast()));
+        assert_eq!(GifskiError::INVALID_STATE, gifski_set_progress_callback(g, pcb, ptr::addr_of_mut!(progress_called).cast()));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 3.));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 10.));
         assert_eq!(GifskiError::OK, gifski_finish(g));
