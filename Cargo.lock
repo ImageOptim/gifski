@@ -264,16 +264,6 @@ dependencies = [
 
 [[package]]
 name = "gif"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3edd93c6756b4dfaf2709eafcc345ba2636565295c198a9cfbf75fa5e3e00b06"
-dependencies = [
- "color_quant",
- "weezl",
-]
-
-[[package]]
-name = "gif"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80792593675e051cf94a4b111980da2ba60d4a83e43e0048c5693baab3977045"
@@ -288,7 +278,7 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a40dfdf5be59e0cbbf77cb7c6a91a18ee6d398b70fc54ad900e2bcba1860cb50"
 dependencies = [
- "gif 0.12.0",
+ "gif",
  "imgref",
  "rgb",
 ]
@@ -312,7 +302,7 @@ dependencies = [
  "crossbeam-utils",
  "dunce",
  "ffmpeg-next",
- "gif 0.11.4",
+ "gif",
  "gif-dispose",
  "gifsicle",
  "imagequant",
