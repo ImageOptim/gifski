@@ -27,7 +27,7 @@ required-features = ["png"]
 [dependencies]
 gifsicle = { version = "1.92.5", optional = true }
 clap = { version = "3.1.18", features = ["cargo"], optional = true }
-gif = "0.11.3"
+gif = "0.12.0"
 gif-dispose = "4.0.0"
 imagequant = "4.0.4"
 imgref = "1.9.2"
