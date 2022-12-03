@@ -147,11 +147,12 @@ fn bin_main() -> BinResult<()> {
     let extra = matches.is_present("extra");
     let motion_quality = parse_opt(matches.value_of("motion-quality")).map_err(|_| "Invalid motion quality")?;
     let lossy_quality = parse_opt(matches.value_of("lossy-quality")).map_err(|_| "Invalid lossy quality")?;
+    let fast = matches.is_present("fast");
     let settings = Settings {
         width,
         height,
         quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
-        fast: matches.is_present("fast"),
+        fast,
         repeat,
     };
     let quiet = matches.is_present("quiet") || output_path == DestPath::Stdout;
@@ -196,7 +197,7 @@ fn bin_main() -> BinResult<()> {
         if speed != 1.0 {
             return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
         }
-        Box::new(png::Lodecoder::new(frames, rate))
+        Box::new(png::Lodecoder::new(frames, rate, if fast { 7 } else { 4 }))
     };
 
     let mut pb;

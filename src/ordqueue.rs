@@ -8,6 +8,12 @@ pub struct OrdQueue<T> {
     sender: Sender<ReverseTuple<T>>,
 }
 
+impl<T> Clone for OrdQueue<T> {
+    fn clone(&self) -> Self {
+        Self { sender: self.sender.clone() }
+    }
+}
+
 pub struct OrdQueueIter<T> {
     receiver: Receiver<ReverseTuple<T>>,
     next_index: usize,

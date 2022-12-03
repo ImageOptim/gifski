@@ -17,9 +17,6 @@
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
-#[macro_use]
-extern crate quick_error;
-
 use imagequant::{Image, QuantizationResult, Attributes};
 use imgref::*;
 use rgb::*;
@@ -37,6 +34,13 @@ mod encoderust;
 
 #[cfg(feature = "gifsicle")]
 mod encodegifsicle;
+
+mod minipool;
+
+/// Not a public API
+#[cfg(feature = "binary")]
+#[doc(hidden)]
+pub use minipool::new as private_minipool;
 
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
