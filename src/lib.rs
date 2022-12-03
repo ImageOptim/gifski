@@ -51,11 +51,7 @@ struct InputFrame {
 }
 
 /// Number of repetitions
-#[derive(Debug, Copy, Clone)]
-pub enum Repeat {
-    Finite(u16),
-    Infinite,
-}
+pub type Repeat = gif::Repeat;
 
 /// Encoding settings for the `new()` function
 #[derive(Copy, Clone)]

@@ -503,7 +503,7 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
 
     let thread = g.write_thread.lock().unwrap().1.take();
     if let Some(thread) = thread {
-        thread.join().expect("writer thread failed")
+        thread.join().unwrap_or(GifskiError::THREAD_LOST)
     } else {
         eprintln!("gifski_finish called before any output has been set");
         GifskiError::OK // this will become INVALID_STATE once sync write support is dropped
