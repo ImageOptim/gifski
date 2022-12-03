@@ -131,19 +131,23 @@ impl<T> Denoiser<T> {
         }
     }
 
-    pub fn push_frame(&mut self, frame: ImgRef<RGBA8>, frame_metadata: T) -> Result<(), WrongSizeError> {
+    #[cfg(test)]
+    fn push_frame_test(&mut self, frame: ImgRef<RGBA8>, frame_metadata: T) -> Result<(), WrongSizeError> {
+        let frame_blurred = smart_blur(frame);
+        self.push_frame(frame, frame_blurred.as_ref(), frame_metadata)
+    }
+
+    pub fn push_frame(&mut self, frame: ImgRef<RGBA8>, frame_blurred: ImgRef<RGB8>, frame_metadata: T) -> Result<(), WrongSizeError> {
         if frame.width() != self.splat.width() || frame.height() != self.splat.height() {
             return Err(WrongSizeError);
         }
 
         self.metadatas.insert(0, frame_metadata);
 
-        let frame_blurred = smart_blur(frame);
-
         self.frames += 1;
         // Can't output anything yet
         if self.frames < LOOKAHEAD {
-            self.quick_append(frame, frame_blurred.as_ref());
+            self.quick_append(frame, frame_blurred);
             return Ok(());
         }
 
@@ -275,7 +279,7 @@ macro_rules! median_channel {
     }
 }
 
-fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
+pub(crate) fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     let mut out = Vec::with_capacity(frame.width() * frame.height());
     loop9_img(frame, |_,_, top, mid, bot| {
         out.push_in_cap(if mid.curr.a > 0 {
@@ -364,7 +368,10 @@ fn px<T>(f: Denoised<T>) -> (RGBA8, T) {
 fn one() {
     let mut d = Denoiser::new(1,1, 100);
     let w = RGBA8::new(255,255,255,255);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    let frame = ImgVec::new(vec![w], 1, 1);
+    let frame_blurred = smart_blur(frame.as_ref());
+
+    d.push_frame(frame.as_ref(), frame_blurred.as_ref(), 0).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
     d.flush();
     assert_eq!(px(d.pop()), (w, 0));
@@ -376,8 +383,8 @@ fn two() {
     let mut d = Denoiser::new(1,1, 100);
     let w = RGBA8::new(254,253,252,255);
     let b = RGBA8::new(8,7,0,255);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
     d.flush();
     assert_eq!(px(d.pop()), (w, 0));
@@ -390,9 +397,9 @@ fn three() {
     let mut d = Denoiser::new(1,1, 100);
     let w = RGBA8::new(254,253,252,255);
     let b = RGBA8::new(8,7,0,255);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
     d.flush();
     assert_eq!(px(d.pop()), (w, 0));
@@ -408,10 +415,10 @@ fn four() {
     let w = RGBA8::new(254,253,252,255);
     let b = RGBA8::new(8,7,0,255);
     let t = RGBA8::new(0,0,0,0);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
-    d.push_frame(ImgVec::new(vec![t], 1, 1).as_ref(), 1).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 3).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    d.push_frame_test(ImgVec::new(vec![t], 1, 1).as_ref(), 1).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 3).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
     d.flush();
     assert_eq!(px(d.pop()), (w, 0));
@@ -427,12 +434,12 @@ fn five() {
     let w = RGBA8::new(254,253,252,255);
     let b = RGBA8::new(8,7,0,255);
     let t = RGBA8::new(0,0,0,0);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
-    d.push_frame(ImgVec::new(vec![t], 1, 1).as_ref(), 1).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 3).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    d.push_frame_test(ImgVec::new(vec![t], 1, 1).as_ref(), 1).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 3).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 4).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 4).unwrap();
     assert_eq!(px(d.pop()), (w, 0));
     d.flush();
     assert_eq!(px(d.pop()), (t, 1));
@@ -449,17 +456,17 @@ fn six() {
     let b = RGBA8::new(8,7,0,255);
     let t = RGBA8::new(0,0,0,0);
     let x = RGBA8::new(4,5,6,255);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 0).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 1).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), 2).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![t], 1, 1).as_ref(), 3).unwrap();
+    d.push_frame_test(ImgVec::new(vec![t], 1, 1).as_ref(), 3).unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), 4).unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), 4).unwrap();
     assert_eq!(px(d.pop()), (w, 0));
-    d.push_frame(ImgVec::new(vec![x], 1, 1).as_ref(), 5).unwrap();
+    d.push_frame_test(ImgVec::new(vec![x], 1, 1).as_ref(), 5).unwrap();
     d.flush();
     assert_eq!(px(d.pop()), (b, 1));
     assert_eq!(px(d.pop()), (b, 2));
@@ -476,19 +483,19 @@ fn many() {
     let w = RGBA8::new(255,254,253,255);
     let b = RGBA8::new(1,2,3,255);
     let t = RGBA8::new(0,0,0,0);
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), "w0").unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), "w0").unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![w], 1, 1).as_ref(), "w1").unwrap();
+    d.push_frame_test(ImgVec::new(vec![w], 1, 1).as_ref(), "w1").unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), "b2").unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), "b2").unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), "b3").unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), "b3").unwrap();
     assert!(matches!(d.pop(), Denoised::NotYet));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), "b4").unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), "b4").unwrap();
     assert_eq!(px(d.pop()), (w, "w0"));
-    d.push_frame(ImgVec::new(vec![t], 1, 1).as_ref(), "t5").unwrap();
+    d.push_frame_test(ImgVec::new(vec![t], 1, 1).as_ref(), "t5").unwrap();
     assert_eq!(px(d.pop()), (w, "w1"));
-    d.push_frame(ImgVec::new(vec![b], 1, 1).as_ref(), "b6").unwrap();
+    d.push_frame_test(ImgVec::new(vec![b], 1, 1).as_ref(), "b6").unwrap();
     assert_eq!(px(d.pop()), (b, "b2"));
     d.flush();
     assert_eq!(px(d.pop()), (b, "b3"));

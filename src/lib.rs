@@ -50,6 +50,8 @@ use std::borrow::Cow;
 struct InputFrame {
     /// The pixels to encode
     frame: ImgVec<RGBA8>,
+    /// The same as above, but with smart blur applied (for denoiser)
+    frame_blurred: ImgVec<RGB8>,
     /// Time in seconds when to display the frame. First frame should start at 0.
     presentation_timestamp: f64,
 }
@@ -223,8 +225,10 @@ impl Collector {
 
     pub(crate) fn add_frame_rgba_cow(&self, frame_index: usize, image: Img<Cow<'_, [RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
+        let frame = Self::resized_binary_alpha(image, self.width, self.height)?;
         self.queue.push(frame_index, Ok(InputFrame {
-            frame: Self::resized_binary_alpha(image, self.width, self.height)?,
+            frame_blurred: smart_blur(frame.as_ref()),
+            frame,
             presentation_timestamp,
         }))
     }
@@ -244,8 +248,10 @@ impl Collector {
             .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
 
         let image = Img::new(image.buffer.into(), image.width, image.height);
+        let frame = Self::resized_binary_alpha(image, width, height)?;
         self.queue.push(frame_index, Ok(InputFrame {
-            frame: Self::resized_binary_alpha(image, width, height)?,
+            frame_blurred: smart_blur(frame.as_ref()),
+            frame,
             presentation_timestamp}
         ))
     }
@@ -483,15 +489,15 @@ impl Writer {
 
         let settings_ext = self.settings;
         let settings = self.settings.s;
-        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(3);
+        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(2);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
             Self::make_diffs(decode_queue_recv, quant_queue, &settings_ext)
         })?;
-        let (remap_queue, remap_queue_recv) = crossbeam_channel::bounded(8);
+        let (remap_queue, remap_queue_recv) = ordqueue::new(2);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
             Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext)
         })?;
-        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(4);
+        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(2);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;
@@ -531,7 +537,7 @@ impl Writer {
             let curr_frame = next_frame.take();
             next_frame = inputs.next().transpose()?;
 
-            if let Some(InputFrame { frame: image, presentation_timestamp: raw_pts }) = curr_frame {
+            if let Some(InputFrame { frame, frame_blurred, presentation_timestamp: raw_pts }) = curr_frame {
                 ordinal_frame_number += 1;
 
                 let pts = raw_pts - last_frame_duration.shift_every_pts_by();
@@ -540,8 +546,8 @@ impl Writer {
                 }
                 last_frame_pts = pts;
 
-                denoiser.push_frame(image.as_ref(), (ordinal_frame_number, pts, last_frame_duration)).map_err(|_| {
-                    Error::WrongSize(format!("Frame {ordinal_frame_number} has wrong size ({}×{})", image.width(), image.height()))
+                denoiser.push_frame(frame.as_ref(), frame_blurred.as_ref(), (ordinal_frame_number, pts, last_frame_duration)).map_err(|_| {
+                    Error::WrongSize(format!("Frame {ordinal_frame_number} has wrong size ({}×{})", frame.width(), frame.height()))
                 })?;
                 if next_frame.is_none() {
                     denoiser.flush();
@@ -572,7 +578,8 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: Sender<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
+        minipool::new(3, "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
         let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
@@ -609,7 +616,7 @@ impl Writer {
                 gif::DisposalMethod::Keep
             };
 
-            let mut importance_map = importance_map.take().unwrap(); // always set at the beginning
+            let importance_map = importance_map.take().unwrap(); // always set at the beginning
 
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
                 if prev_frame_keeps {
@@ -621,14 +628,6 @@ impl Writer {
                     }
                 }
 
-                let needs_transparency = consecutive_frame_num > 0 || (consecutive_frame_num == 0 && first_frame_has_transparency);
-                let (liq, remap, liq_image) = Self::quantize(image, &importance_map, consecutive_frame_num == 0, needs_transparency, prev_frame_keeps, settings)?;
-                let max_loss = settings.gifsicle_loss();
-                for imp in &mut importance_map {
-                    // encoding assumes rgba background looks like encoded background, which is not true for lossy
-                    *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
-                }
-
                 let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {
                     next_pts
                 } else {
@@ -636,21 +635,33 @@ impl Writer {
                 };
                 debug_assert!(end_pts > 0.);
 
-                remap_queue.send(RemapMessage {
-                    ordinal_frame_number,
-                    end_pts,
-                    dispose,
-                    liq, remap,
-                    liq_image,
-                })?;
+                to_remap.send((end_pts, image, importance_map, ordinal_frame_number, consecutive_frame_num, dispose, first_frame_has_transparency, prev_frame_keeps))?;
+
                 consecutive_frame_num += 1;
                 prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
             }
         }
         Ok(())
+        }, move |(end_pts, image, mut importance_map, ordinal_frame_number, consecutive_frame_num, dispose, first_frame_has_transparency, prev_frame_keeps)| {
+            let needs_transparency = consecutive_frame_num > 0 || (consecutive_frame_num == 0 && first_frame_has_transparency);
+            let (liq, remap, liq_image) = Self::quantize(image, &importance_map, consecutive_frame_num == 0, needs_transparency, prev_frame_keeps, settings).unwrap();
+            let max_loss = settings.gifsicle_loss();
+            for imp in &mut importance_map {
+                // encoding assumes rgba background looks like encoded background, which is not true for lossy
+                *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
+            }
+
+            remap_queue.push(consecutive_frame_num as usize, RemapMessage {
+                ordinal_frame_number,
+                end_pts,
+                dispose,
+                liq, remap,
+                liq_image,
+            })
+        })
     }
 
-    fn remap_frames(inputs: Receiver<RemapMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
+    fn remap_frames(inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
         let mut inputs = inputs.into_iter().peekable();
         let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
@@ -681,21 +692,19 @@ impl Writer {
 
             screen_after_dispose.then_blit(Some(&image8_pal), dispose, left, top as _, image8.as_ref(), transparent_index)?;
 
-            let frame = GIFFrame {
-                left,
-                top,
-                screen_width,
-                screen_height,
-                image: image8,
-                pal: image8_pal,
-                transparent_index,
-                dispose,
-            };
-
             write_queue.send(FrameMessage {
                 ordinal_frame_number,
                 end_pts,
-                frame,
+                frame: GIFFrame {
+                    left,
+                    top,
+                    screen_width,
+                    screen_height,
+                    image: image8,
+                    pal: image8_pal,
+                    transparent_index,
+                    dispose,
+                },
             })?;
 
             is_first_frame = false;

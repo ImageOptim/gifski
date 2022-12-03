@@ -13,7 +13,7 @@ repository = "https://github.com/ImageOptim/gifski"
 version = "1.8.1"
 autobins = false
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.63"
 
 [[bin]]
 doctest = false
@@ -86,5 +86,5 @@ strip = true
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
-# [patch.crates-io]
-# ffmpeg-sys-next = { rev = "78458039d5fac99354f9cb078869f3be3f3af5fb", git = "https://github.com/kornelski/rust-ffmpeg-sys-1"}
+[patch.crates-io]
+ffmpeg-sys-next = { rev = "78458039d5fac99354f9cb078869f3be3f3af5fb", git = "https://github.com/kornelski/rust-ffmpeg-sys-1"}
