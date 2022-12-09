@@ -45,7 +45,13 @@ pub use minipool::new as private_minipool;
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
 use std::thread;
-use std::borrow::Cow;
+
+struct InputFrameUnresized {
+    /// The pixels to resize and encode
+    frame: ImgVec<RGBA8>,
+    /// Time in seconds when to display the frame. First frame should start at 0.
+    presentation_timestamp: f64,
+}
 
 struct InputFrame {
     /// The pixels to encode
@@ -118,15 +124,13 @@ impl Default for Settings {
 /// Note that writing will finish only when the collector is dropped.
 /// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
 pub struct Collector {
-    width: Option<u32>,
-    height: Option<u32>,
-    queue: OrdQueue<CatResult<InputFrame>>,
+    queue: OrdQueue<CatResult<InputFrameUnresized>>,
 }
 
 /// Perform GIF writing
 pub struct Writer {
     /// Input frame decoder results
-    queue_iter: Option<OrdQueueIter<CatResult<InputFrame>>>,
+    queue_iter: Option<OrdQueueIter<CatResult<InputFrameUnresized>>>,
     settings: SettingsExt,
 }
 
@@ -196,8 +200,6 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     Ok((
         Collector {
             queue,
-            width: settings.width,
-            height: settings.height,
         },
         Writer {
             queue_iter: Some(queue_iter),
@@ -219,15 +221,9 @@ impl Collector {
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
-    pub fn add_frame_rgba(&self, frame_index: usize, image: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
-        self.add_frame_rgba_cow(frame_index, image.into(), presentation_timestamp)
-    }
-
-    pub(crate) fn add_frame_rgba_cow(&self, frame_index: usize, image: Img<Cow<'_, [RGBA8]>>, presentation_timestamp: f64) -> CatResult<()> {
+    pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        let frame = Self::resized_binary_alpha(image, self.width, self.height)?;
-        self.queue.push(frame_index, Ok(InputFrame {
-            frame_blurred: smart_blur(frame.as_ref()),
+        self.queue.push(frame_index, Ok(InputFrameUnresized {
             frame,
             presentation_timestamp,
         }))
@@ -242,80 +238,76 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     #[cfg(feature = "png")]
     pub fn add_frame_png_file(&self, frame_index: usize, path: std::path::PathBuf, presentation_timestamp: f64) -> CatResult<()> {
-        let width = self.width;
-        let height = self.height;
         let image = lodepng::decode32_file(&path)
             .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
 
-        let image = Img::new(image.buffer.into(), image.width, image.height);
-        let frame = Self::resized_binary_alpha(image, width, height)?;
-        self.queue.push(frame_index, Ok(InputFrame {
-            frame_blurred: smart_blur(frame.as_ref()),
+        let frame = Img::new(image.buffer, image.width, image.height);
+        self.queue.push(frame_index, Ok(InputFrameUnresized {
             frame,
             presentation_timestamp}
         ))
     }
+}
 
-    #[allow(clippy::identity_op)]
-    #[allow(clippy::erasing_op)]
-    fn resized_binary_alpha(image: Img<Cow<[RGBA8]>>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
-        let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
+#[allow(clippy::identity_op)]
+#[allow(clippy::erasing_op)]
+fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
+    let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
-        let mut image = if width != image.width() || height != image.height() {
-            let tmp = image.as_ref();
-            let (buf, img_width, img_height) = tmp.to_contiguous_buf();
-            assert_eq!(buf.len(), img_width * img_height);
+    let mut image = if width != image.width() || height != image.height() {
+        let tmp = image.as_ref();
+        let (buf, img_width, img_height) = tmp.to_contiguous_buf();
+        assert_eq!(buf.len(), img_width * img_height);
 
-            let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
-            let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
-            r.resize(&buf, &mut dst)?;
-            ImgVec::new(dst, width, height)
+        let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
+        let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
+        r.resize(&buf, &mut dst)?;
+        ImgVec::new(dst, width, height)
+    } else {
+        image
+    };
+
+    // dithering of anti-aliased edges can look very fuzzy, so disable it near the edges
+    let mut anti_aliasing = Vec::with_capacity(image.width() * image.height());
+    loop9::loop9(image.as_ref(), 0, 0, image.width(), image.height(), |_x,_y, top, mid, bot| {
+        anti_aliasing.push_in_cap(if mid.curr.a == 255 || mid.curr.a == 0 {
+            false
         } else {
-            image.into_owned()
-        };
-
-        // dithering of anti-aliased edges can look very fuzzy, so disable it near the edges
-        let mut anti_aliasing = Vec::with_capacity(image.width() * image.height());
-        loop9::loop9(image.as_ref(), 0, 0, image.width(), image.height(), |_x,_y, top, mid, bot| {
-            anti_aliasing.push_in_cap(if mid.curr.a == 255 || mid.curr.a == 0 {
-                false
-            } else {
-                fn is_edge(a: u8, b: u8) -> bool {
-                    a < 12 && b >= 240 ||
-                    b < 12 && a >= 240
-                }
-                is_edge(top.curr.a, bot.curr.a) ||
-                is_edge(mid.prev.a, mid.next.a) ||
-                is_edge(top.prev.a, bot.next.a) ||
-                is_edge(top.next.a, bot.prev.a)
-            });
+            fn is_edge(a: u8, b: u8) -> bool {
+                a < 12 && b >= 240 ||
+                b < 12 && a >= 240
+            }
+            is_edge(top.curr.a, bot.curr.a) ||
+            is_edge(mid.prev.a, mid.next.a) ||
+            is_edge(top.prev.a, bot.next.a) ||
+            is_edge(top.next.a, bot.prev.a)
         });
+    });
 
-        // this table is already biased, so that px.a doesn't need to be changed
-        const DITHER: [u8; 64] = [
-         0*2+8,48*2+8,12*2+8,60*2+8, 3*2+8,51*2+8,15*2+8,63*2+8,
-        32*2+8,16*2+8,44*2+8,28*2+8,35*2+8,19*2+8,47*2+8,31*2+8,
-         8*2+8,56*2+8, 4*2+8,52*2+8,11*2+8,59*2+8, 7*2+8,55*2+8,
-        40*2+8,24*2+8,36*2+8,20*2+8,43*2+8,27*2+8,39*2+8,23*2+8,
-         2*2+8,50*2+8,14*2+8,62*2+8, 1*2+8,49*2+8,13*2+8,61*2+8,
-        34*2+8,18*2+8,46*2+8,30*2+8,33*2+8,17*2+8,45*2+8,29*2+8,
-        10*2+8,58*2+8, 6*2+8,54*2+8, 9*2+8,57*2+8, 5*2+8,53*2+8,
-        42*2+8,26*2+8,38*2+8,22*2+8,41*2+8,25*2+8,37*2+8,21*2+8];
+    // this table is already biased, so that px.a doesn't need to be changed
+    const DITHER: [u8; 64] = [
+     0*2+8,48*2+8,12*2+8,60*2+8, 3*2+8,51*2+8,15*2+8,63*2+8,
+    32*2+8,16*2+8,44*2+8,28*2+8,35*2+8,19*2+8,47*2+8,31*2+8,
+     8*2+8,56*2+8, 4*2+8,52*2+8,11*2+8,59*2+8, 7*2+8,55*2+8,
+    40*2+8,24*2+8,36*2+8,20*2+8,43*2+8,27*2+8,39*2+8,23*2+8,
+     2*2+8,50*2+8,14*2+8,62*2+8, 1*2+8,49*2+8,13*2+8,61*2+8,
+    34*2+8,18*2+8,46*2+8,30*2+8,33*2+8,17*2+8,45*2+8,29*2+8,
+    10*2+8,58*2+8, 6*2+8,54*2+8, 9*2+8,57*2+8, 5*2+8,53*2+8,
+    42*2+8,26*2+8,38*2+8,22*2+8,41*2+8,25*2+8,37*2+8,21*2+8];
 
-        // Make transparency binary
-        for (y, (row, aa)) in image.rows_mut().zip(anti_aliasing.chunks_exact(width)).enumerate() {
-            for (x, (px, aa)) in row.iter_mut().zip(aa.iter().copied()).enumerate() {
-                if px.a < 255 {
-                    if aa {
-                        px.a = if px.a < 89 { 0 } else { 255 };
-                    } else {
-                        px.a = if px.a < DITHER[(y & 7) * 8 + (x & 7)] { 0 } else { 255 };
-                    }
+    // Make transparency binary
+    for (y, (row, aa)) in image.rows_mut().zip(anti_aliasing.chunks_exact(width)).enumerate() {
+        for (x, (px, aa)) in row.iter_mut().zip(aa.iter().copied()).enumerate() {
+            if px.a < 255 {
+                if aa {
+                    px.a = if px.a < 89 { 0 } else { 255 };
+                } else {
+                    px.a = if px.a < DITHER[(y & 7) * 8 + (x & 7)] { 0 } else { 255 };
                 }
             }
         }
-        Ok(image)
     }
+    Ok(image)
 }
 
 /// `add_frame` is going to resize the image to this size.
@@ -489,9 +481,13 @@ impl Writer {
 
         let settings_ext = self.settings;
         let settings = self.settings.s;
+        let (resize_queue, resize_queue_recv) = crossbeam_channel::bounded(2);
+        let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
+            Self::make_resize(decode_queue_recv, resize_queue, &settings_ext.s)
+        })?;
         let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(2);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
-            Self::make_diffs(decode_queue_recv, quant_queue, &settings_ext)
+            Self::make_diffs(resize_queue_recv, quant_queue, &settings_ext)
         })?;
         let (remap_queue, remap_queue_recv) = ordqueue::new(2);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
@@ -502,14 +498,30 @@ impl Writer {
             Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;
         let res0 = Self::write_frames(write_queue_recv, encoder, &self.settings.s, reporter);
-        let res1 = diff_thread.join().map_err(|_| Error::ThreadSend)?;
-        let res2 = quant_thread.join().map_err(|_| Error::ThreadSend)?;
-        let res3 = remap_thread.join().map_err(|_| Error::ThreadSend)?;
-        combine_res(combine_res(res0, res1), combine_res(res2, res3))
+        let res1 = resize_thread.join().map_err(|_| Error::ThreadSend)?;
+        let res2 = diff_thread.join().map_err(|_| Error::ThreadSend)?;
+        let res3 = quant_thread.join().map_err(|_| Error::ThreadSend)?;
+        let res4 = remap_thread.join().map_err(|_| Error::ThreadSend)?;
+        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
     }
 
-    fn make_diffs(mut inputs: OrdQueueIter<CatResult<InputFrame>>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
-        let first_frame = inputs.next().transpose()?.ok_or(Error::NoFrames)?;
+    fn make_resize(inputs: OrdQueueIter<CatResult<InputFrameUnresized>>, diff_queue: Sender<InputFrame>, settings: &Settings) -> CatResult<()> {
+        for frame in inputs {
+            let frame = frame?;
+            let resized = resized_binary_alpha(frame.frame, settings.width, settings.height)?;
+            diff_queue.send(InputFrame {
+                frame_blurred: smart_blur(resized.as_ref()),
+                frame: resized,
+                presentation_timestamp: frame.presentation_timestamp,
+            })?;
+        }
+        Ok(())
+
+    }
+
+    fn make_diffs(inputs: Receiver<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
+        let mut inputs = inputs.into_iter();
+        let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
             // this is gifski's weird rule that a non-zero first-frame pts
@@ -535,7 +547,7 @@ impl Writer {
             ////////////////////// Feed denoiser: /////////////////////
 
             let curr_frame = next_frame.take();
-            next_frame = inputs.next().transpose()?;
+            next_frame = inputs.next();
 
             if let Some(InputFrame { frame, frame_blurred, presentation_timestamp: raw_pts }) = curr_frame {
                 ordinal_frame_number += 1;
