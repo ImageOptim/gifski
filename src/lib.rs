@@ -761,7 +761,7 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
+fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
     let mut image_trimmed = image8.as_ref();
 
     let bottom = image_trimmed.rows().zip(screen.rows()).rev()
@@ -778,6 +778,7 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
             return None;
         }
         image_trimmed = image_trimmed.sub_image(0, 0, image_trimmed.width(), image_trimmed.height() - bottom);
+        screen = screen.sub_image(0, 0, screen.width(), screen.height() - bottom);
     }
 
     let top = image_trimmed.rows().zip(screen.rows())
@@ -791,14 +792,26 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
 
     if top > 0 {
         image_trimmed = image_trimmed.sub_image(0, top, image_trimmed.width(), image_trimmed.height() - top);
+        screen = screen.sub_image(0, top, screen.width(), screen.height() - top);
     }
 
-    if image_trimmed.height() != image8.height() {
+    let left = (0..image_trimmed.width()-1)
+        .take_while(|&x| {
+            (0..image_trimmed.height()).all(|y| {
+                let px = image_trimmed[(x, y)];
+                Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&screen[(x, y)])
+            })
+        }).count();
+    if left > 0 {
+        image_trimmed = image_trimmed.sub_image(left, 0, image_trimmed.width() - left, image_trimmed.height());
+    }
+
+    if image_trimmed.height() != image8.height() || image_trimmed.width() != image8.width() {
         let (buf, width, height) = image_trimmed.to_contiguous_buf();
         image8 = Img::new(buf.into_owned(), width, height);
     }
 
-    Some((0, top as _, image8))
+    Some((left as _, top as _, image8))
 }
 
 trait PushInCapacity<T> {
