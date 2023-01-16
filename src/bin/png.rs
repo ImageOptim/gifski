@@ -1,3 +1,4 @@
+use std::num::NonZeroU8;
 use crate::source::Fps;
 use crate::source::Source;
 use crate::BinResult;
@@ -7,11 +8,11 @@ use std::path::PathBuf;
 pub struct Lodecoder {
     frames: Vec<PathBuf>,
     fps: f32,
-    thread_pool_size: u8,
+    thread_pool_size: NonZeroU8,
 }
 
 impl Lodecoder {
-    pub fn new(frames: Vec<PathBuf>, params: Fps, thread_pool_size: u8) -> Self {
+    pub fn new(frames: Vec<PathBuf>, params: Fps, thread_pool_size: NonZeroU8) -> Self {
         Self { frames, fps: params.fps, thread_pool_size }
     }
 }

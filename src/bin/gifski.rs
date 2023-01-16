@@ -204,7 +204,7 @@ fn bin_main() -> BinResult<()> {
         if speed != 1.0 {
             return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
         }
-        Box::new(png::Lodecoder::new(frames, rate, if fast { 6 } else { 3 }))
+        Box::new(png::Lodecoder::new(frames, rate, if fast { 6 } else { 3 }.try_into().unwrap()))
     };
 
     let mut pb;

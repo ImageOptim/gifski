@@ -1,9 +1,10 @@
+use std::num::NonZeroU8;
 use std::panic::catch_unwind;
 use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use crossbeam_channel::Sender;
 use crate::Error;
 
-pub fn new<P, C, M, R>(num_threads: u8, name: &str, producer: P, mut consumer: C) -> Result<R, Error> where
+pub fn new<P, C, M, R>(num_threads: NonZeroU8, name: &str, producer: P, mut consumer: C) -> Result<R, Error> where
     M: Send,
     C: Clone + Send + FnMut(M) -> Result<(), Error> + std::panic::UnwindSafe,
     P: FnOnce(Sender<M>) -> Result<R, Error>,
@@ -34,12 +35,11 @@ pub fn new<P, C, M, R>(num_threads: u8, name: &str, producer: P, mut consumer: C
                 Error::ThreadSend
             })
         };
-        debug_assert!(num_threads > 0);
-        let mut handles = Vec::with_capacity(num_threads.into());
-        for n in 0..num_threads-1 {
+        let mut handles = Vec::with_capacity(num_threads.get().into());
+        for n in 0..num_threads.get()-1 {
             handles.push(spawn(n, thread.clone())?);
         }
-        handles.push(spawn(num_threads-1, thread)?);
+        handles.push(spawn(num_threads.get()-1, thread)?);
 
         let res = producer(s).map_err(|e| {
             failed.store(true, SeqCst);

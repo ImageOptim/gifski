@@ -44,6 +44,7 @@ pub use minipool::new as private_minipool;
 
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
+use std::num::NonZeroU8;
 use std::thread;
 
 struct InputFrameUnresized {
@@ -51,6 +52,7 @@ struct InputFrameUnresized {
     frame: ImgVec<RGBA8>,
     /// Time in seconds when to display the frame. First frame should start at 0.
     presentation_timestamp: f64,
+    frame_index: usize,
 }
 
 struct InputFrame {
@@ -84,6 +86,7 @@ pub struct Settings {
 #[non_exhaustive]
 struct SettingsExt {
     pub s: Settings,
+    pub max_threads: NonZeroU8,
     pub extra_effort: bool,
     pub motion_quality: u8,
     pub giflossy_quality: u8,
@@ -124,13 +127,13 @@ impl Default for Settings {
 /// Note that writing will finish only when the collector is dropped.
 /// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
 pub struct Collector {
-    queue: OrdQueue<CatResult<InputFrameUnresized>>,
+    queue: Sender<CatResult<InputFrameUnresized>>,
 }
 
 /// Perform GIF writing
 pub struct Writer {
     /// Input frame decoder results
-    queue_iter: Option<OrdQueueIter<CatResult<InputFrameUnresized>>>,
+    queue_iter: Option<Receiver<CatResult<InputFrameUnresized>>>,
     settings: SettingsExt,
 }
 
@@ -195,7 +198,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     if settings.width.unwrap_or(0) > 1<<16 || settings.height.unwrap_or(0) > 1<<16 {
         return Err(Error::WrongSize("image size too large".into()));
     }
-    let (queue, queue_iter) = ordqueue::new(6); // should be sufficient for denoiser lookahead
+    let (queue, queue_iter) = crossbeam_channel::bounded(6); // should be sufficient for denoiser lookahead
 
     Ok((
         Collector {
@@ -204,6 +207,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         Writer {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
+                max_threads: thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8).try_into().unwrap(),
                 motion_quality: settings.quality,
                 giflossy_quality: settings.quality,
                 extra_effort: false,
@@ -223,10 +227,12 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.push(frame_index, Ok(InputFrameUnresized {
+        self.queue.send(Ok(InputFrameUnresized {
+            frame_index,
             frame,
             presentation_timestamp,
-        }))
+        }))?;
+        Ok(())
     }
 
     /// Read and decode a PNG file from disk.
@@ -242,10 +248,12 @@ impl Collector {
             .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
 
         let frame = Img::new(image.buffer, image.width, image.height);
-        self.queue.push(frame_index, Ok(InputFrameUnresized {
+        self.queue.send(Ok(InputFrameUnresized {
             frame,
-            presentation_timestamp}
-        ))
+            presentation_timestamp,
+            frame_index,
+        }))?;
+        Ok(())
     }
 }
 
@@ -383,7 +391,7 @@ impl Writer {
     ///
     /// `background` is the previous frame.
     fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
-        let SettingsExt {s: settings, extra_effort, motion_quality: _, giflossy_quality: _} = settings;
+        let SettingsExt {s: settings, extra_effort, motion_quality: _, giflossy_quality: _, max_threads: _ } = settings;
         let mut liq = Attributes::new();
         if settings.fast {
             liq.set_speed(10)?;
@@ -481,13 +489,13 @@ impl Writer {
 
         let settings_ext = self.settings;
         let settings = self.settings.s;
-        let (resize_queue, resize_queue_recv) = crossbeam_channel::bounded(2);
+        let (diff_queue, diff_queue_recv) = ordqueue::new(2);
         let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
-            Self::make_resize(decode_queue_recv, resize_queue, &settings_ext.s)
+            Self::make_resize(decode_queue_recv, diff_queue, &settings_ext)
         })?;
         let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(2);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
-            Self::make_diffs(resize_queue_recv, quant_queue, &settings_ext)
+            Self::make_diffs(diff_queue_recv, quant_queue, &settings_ext)
         })?;
         let (remap_queue, remap_queue_recv) = ordqueue::new(2);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
@@ -505,21 +513,25 @@ impl Writer {
         combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
     }
 
-    fn make_resize(inputs: OrdQueueIter<CatResult<InputFrameUnresized>>, diff_queue: Sender<InputFrame>, settings: &Settings) -> CatResult<()> {
-        for frame in inputs {
-            let frame = frame?;
-            let resized = resized_binary_alpha(frame.frame, settings.width, settings.height)?;
-            diff_queue.send(InputFrame {
-                frame_blurred: smart_blur(resized.as_ref()),
+    fn make_resize(inputs: Receiver<CatResult<InputFrameUnresized>>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
+        minipool::new(settings.max_threads.min(if settings.s.fast { 6 } else { 4 }.try_into().unwrap()), "resize", move |to_remap| {
+            for frame in inputs {
+                to_remap.send(frame?)?;
+            }
+            Ok(())
+        }, move |frame| {
+            let resized = resized_binary_alpha(frame.frame, settings.s.width, settings.s.height)?;
+            let frame_blurred = smart_blur(resized.as_ref());
+            diff_queue.push(frame.frame_index, InputFrame {
                 frame: resized,
+                frame_blurred,
                 presentation_timestamp: frame.presentation_timestamp,
             })?;
-        }
-        Ok(())
-
+            Ok(())
+        })
     }
 
-    fn make_diffs(inputs: Receiver<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_diffs(inputs: OrdQueueIter<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
         let mut inputs = inputs.into_iter();
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
@@ -591,7 +603,7 @@ impl Writer {
     }
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new(3, "quant", move |to_remap| {
+        minipool::new(settings.max_threads.min(3.try_into().unwrap()), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
         let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
