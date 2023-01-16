@@ -14,8 +14,8 @@ pub struct FfmpegDecoder {
 }
 
 impl Source for FfmpegDecoder {
-    fn total_frames(&self) -> u64 {
-        self.frames
+    fn total_frames(&self) -> Option<u64> {
+        Some(self.frames)
     }
     fn collect(&mut self, dest: &mut Collector) -> BinResult<()> {
         self.collect_frames(dest)

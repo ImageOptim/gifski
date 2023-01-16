@@ -17,8 +17,8 @@ impl Lodecoder {
 }
 
 impl Source for Lodecoder {
-    fn total_frames(&self) -> u64 {
-        self.frames.len() as u64
+    fn total_frames(&self) -> Option<u64> {
+        Some(self.frames.len() as u64)
     }
 
     fn collect(&mut self, dest: &mut Collector) -> BinResult<()> {

@@ -5,6 +5,7 @@ use gifski::{Settings, Repeat};
 #[cfg(feature = "video")]
 mod ffmpeg_source;
 mod png;
+mod gif;
 mod source;
 use crate::source::Source;
 
@@ -25,7 +26,7 @@ use std::time::Duration;
 #[cfg(feature = "video")]
 const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, or multiple PNG image files";
 #[cfg(not(feature = "video"))]
-const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files";
+const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames";
 
 fn main() {
     if let Err(e) = bin_main() {
@@ -115,7 +116,7 @@ fn bin_main() -> BinResult<()> {
                             .long("quiet")
                             .short('q')
                             .help("Do not display anything on standard output/console"))
-                        .arg(Arg::new("FILE")
+                        .arg(Arg::new("FILES")
                             .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
                             .forbid_empty_values(true)
@@ -128,7 +129,7 @@ fn bin_main() -> BinResult<()> {
                             .value_name("num"))
                         .get_matches_from(wild::args_os());
 
-    let mut frames: Vec<_> = matches.values_of("FILE").ok_or("Missing files")?.collect();
+    let mut frames: Vec<_> = matches.values_of("FILES").ok_or("Missing files")?.collect();
     if !matches.is_present("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
@@ -182,10 +183,16 @@ fn bin_main() -> BinResult<()> {
 
     let mut decoder = if frames.is_empty() {
         return Err("Please specify input files".into())
-    } else if frames.len() == 1 {
-        match file_type(&frames[0]).unwrap_or(FileType::Other) {
+    } else if let [path] = &frames[..] {
+        match file_type(path).unwrap_or(FileType::Other) {
             FileType::PNG | FileType::JPEG => return Err("Only a single image file was given as an input. This is not enough to make an animation.".into()),
-            _ => get_video_decoder(&frames[0], rate, settings)?,
+            FileType::GIF => {
+                if !quiet && (width.is_none() && settings.quality > 50) {
+                    eprintln!("warning: reading an existing GIF as an input. This can only worsen the quality. Use PNG frames instead.");
+                }
+                Box::new(gif::GifDecoder::new(path, rate)?)
+            },
+            _ => get_video_decoder(path, rate, settings)?,
         }
     } else {
         if let Ok(FileType::JPEG) = file_type(&frames[0]) {
@@ -197,7 +204,7 @@ fn bin_main() -> BinResult<()> {
         if speed != 1.0 {
             return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
         }
-        Box::new(png::Lodecoder::new(frames, rate, if fast { 7 } else { 4 }))
+        Box::new(png::Lodecoder::new(frames, rate, if fast { 6 } else { 3 }))
     };
 
     let mut pb;
@@ -205,7 +212,7 @@ fn bin_main() -> BinResult<()> {
     let progress: &mut dyn ProgressReporter = if quiet {
         &mut nopb
     } else {
-        pb = ProgressBar::new(decoder.total_frames());
+        pb = ProgressBar::new(decoder.total_frames().unwrap_or(100));
         pb.show_speed = false;
         pb.show_percent = false;
         pb.format(" #_. ");
@@ -248,7 +255,7 @@ fn bin_main() -> BinResult<()> {
 }
 
 enum FileType {
-    PNG, JPEG, Other,
+    PNG, GIF, JPEG, Other,
 }
 
 fn file_type(path: &Path) -> BinResult<FileType> {
@@ -258,6 +265,9 @@ fn file_type(path: &Path) -> BinResult<FileType> {
 
     if &buf == b"\x89PNG" {
         return Ok(FileType::PNG);
+    }
+    if &buf == b"GIF8" {
+        return Ok(FileType::GIF);
     }
     if &buf[..2] == [0xFF, 0xD8] {
         return Ok(FileType::JPEG);
@@ -271,6 +281,8 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
             let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
             if path.to_str().map_or(false, |p| p.contains('*')) {
                 msg += "\nThe path contains a literal \"*\" character. If you want to select multiple files, don't put the special wildcard characters in quotes.";
+            } else if path.extension() == Some("gif".as_ref()) {
+                msg = format!("Did you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
             } else if path.is_relative() {
                 msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
             }
