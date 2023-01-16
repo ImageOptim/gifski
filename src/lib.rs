@@ -514,14 +514,14 @@ impl Writer {
     }
 
     fn make_resize(inputs: Receiver<CatResult<InputFrameUnresized>>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new(settings.max_threads.min(if settings.s.fast { 6 } else { 4 }.try_into().unwrap()), "resize", move |to_remap| {
+        minipool::new(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into().unwrap()), "resize", move |to_remap| {
             for frame in inputs {
                 to_remap.send(frame?)?;
             }
             Ok(())
         }, move |frame| {
             let resized = resized_binary_alpha(frame.frame, settings.s.width, settings.s.height)?;
-            let frame_blurred = smart_blur(resized.as_ref());
+            let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
             diff_queue.push(frame.frame_index, InputFrame {
                 frame: resized,
                 frame_blurred,
