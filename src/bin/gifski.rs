@@ -280,7 +280,7 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
         if !path.exists() {
             let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
             if path.to_str().map_or(false, |p| p.contains('*')) {
-                msg += "\nThe path contains a literal \"*\" character. If you want to select multiple files, don't put the special wildcard characters in quotes.";
+                msg += "\nThe path contains a literal \"*\" character. Either no files matched the pattern, or the pattern was in quotes.";
             } else if path.extension() == Some("gif".as_ref()) {
                 msg = format!("Did you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
             } else if path.is_relative() {
