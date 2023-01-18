@@ -40,12 +40,13 @@ mod minipool;
 /// Not a public API
 #[cfg(feature = "binary")]
 #[doc(hidden)]
-pub use minipool::new as private_minipool;
+pub use minipool::new_channel as private_minipool;
 
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
 use std::num::NonZeroU8;
 use std::thread;
+use std::sync::atomic::Ordering::Relaxed;
 
 struct InputFrameUnresized {
     /// The pixels to resize and encode
@@ -514,19 +515,22 @@ impl Writer {
     }
 
     fn make_resize(inputs: Receiver<CatResult<InputFrameUnresized>>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into().unwrap()), "resize", move |to_remap| {
-            for frame in inputs {
-                to_remap.send(frame?)?;
-            }
+        minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into().unwrap()), "resize", move || {
             Ok(())
-        }, move |frame| {
-            let resized = resized_binary_alpha(frame.frame, settings.s.width, settings.s.height)?;
-            let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
-            diff_queue.push(frame.frame_index, InputFrame {
-                frame: resized,
-                frame_blurred,
-                presentation_timestamp: frame.presentation_timestamp,
-            })?;
+        }, move |abort| {
+            for frame in inputs {
+                if abort.load(Relaxed) {
+                    return Err(Error::Aborted);
+                }
+                let frame = frame?;
+                let resized = resized_binary_alpha(frame.frame, settings.s.width, settings.s.height)?;
+                let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
+                diff_queue.push(frame.frame_index, InputFrame {
+                    frame: resized,
+                    frame_blurred,
+                    presentation_timestamp: frame.presentation_timestamp,
+                })?;
+            }
             Ok(())
         })
     }
@@ -603,7 +607,7 @@ impl Writer {
     }
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new(settings.max_threads.min(3.try_into().unwrap()), "quant", move |to_remap| {
+        minipool::new_channel(settings.max_threads.min(3.try_into().unwrap()), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
         let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
