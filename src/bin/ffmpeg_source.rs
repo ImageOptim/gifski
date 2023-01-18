@@ -70,7 +70,7 @@ impl FfmpegDecoder {
         };
 
 
-        let mut add_frame = |rgba_frame: &ffmpeg::util::frame::Video, pts: f64, pos: i64| -> BinResult<()> {
+        let add_frame = |rgba_frame: &ffmpeg::util::frame::Video, pts: f64, pos: i64| -> BinResult<()> {
             let stride = rgba_frame.stride(0) as usize;
             if stride % 4 != 0 {
                 Err("incompatible video")?;
