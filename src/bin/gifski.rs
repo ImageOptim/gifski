@@ -238,16 +238,20 @@ fn bin_main() -> BinResult<()> {
         decoder.collect(&mut collector)
     })?;
 
-    match output_path {
+    let mut file_tmp;
+    let mut stdio_tmp;
+    let out: &mut dyn io::Write = match output_path {
         DestPath::Path(p) => {
-            let file = File::create(p)
+            file_tmp = File::create(p)
                 .map_err(|e| format!("Can't write to {}: {e}", p.display()))?;
-            writer.write(file, progress)?;
+            &mut file_tmp
         },
         DestPath::Stdout => {
-            writer.write(io::stdout().lock(), progress)?;
+            stdio_tmp = io::stdout().lock();
+            &mut stdio_tmp
         },
     };
+    writer.write(io::BufWriter::new(out), progress)?;
     decode_thread.join().map_err(|_| "thread died?")??;
     progress.done(&format!("gifski created {output_path}"));
 
