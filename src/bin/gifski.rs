@@ -1,6 +1,7 @@
-use std::ffi::OsStr;
+use clap::builder::NonEmptyStringValueParser;
 use std::io::Read;
 use gifski::{Settings, Repeat};
+use clap::value_parser;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
@@ -50,10 +51,9 @@ fn bin_main() -> BinResult<()> {
                             .long("output")
                             .short('o')
                             .help("Destination file to write to; \"-\" means stdout")
-                            .forbid_empty_values(true)
                             .takes_value(true)
                             .value_name("a.gif")
-                            .allow_invalid_utf8(true)
+                            .value_parser(value_parser!(PathBuf))
                             .required(true))
                         .arg(Arg::new("fps")
                             .long("fps")
@@ -63,13 +63,13 @@ fn bin_main() -> BinResult<()> {
                                    kept. If video is used, it will be resampled to \
                                    this constant rate by dropping and/or duplicating \
                                    frames")
-                            .forbid_empty_values(true)
+                            .value_parser(value_parser!(f32))
                             .value_name("num")
                             .default_value("20"))
                         .arg(Arg::new("fast-forward")
                             .long("fast-forward")
                             .help("Multiply speed of video by a factor\n(no effect when using images as input)")
-                            .forbid_empty_values(true)
+                            .value_parser(value_parser!(f32))
                             .value_name("x")
                             .default_value("1"))
                         .arg(Arg::new("fast")
@@ -83,29 +83,34 @@ fn bin_main() -> BinResult<()> {
                             .long("quality")
                             .short('Q')
                             .value_name("1-100")
+                            .value_parser(value_parser!(u8).range(1..=100))
                             .takes_value(true)
                             .default_value("90")
                             .help("Lower quality may give smaller file"))
                         .arg(Arg::new("motion-quality")
                             .long("motion-quality")
                             .value_name("1-100")
+                            .value_parser(value_parser!(u8).range(1..=100))
                             .takes_value(true)
                             .help("Lower values reduce motion"))
                         .arg(Arg::new("lossy-quality")
                             .long("lossy-quality")
                             .value_name("1-100")
+                            .value_parser(value_parser!(u8).range(1..=100))
                             .takes_value(true)
                             .help("Lower values introduce noise and streaks"))
                         .arg(Arg::new("width")
                             .long("width")
                             .short('W')
                             .takes_value(true)
+                            .value_parser(value_parser!(u32))
                             .value_name("px")
                             .help("Maximum width.\nBy default anims are limited to about 800x600"))
                         .arg(Arg::new("height")
                             .long("height")
                             .short('H')
                             .takes_value(true)
+                            .value_parser(value_parser!(u32))
                             .value_name("px")
                             .help("Maximum height (stretches if the width is also set)"))
                         .arg(Arg::new("nosort")
@@ -119,46 +124,47 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::new("FILES")
                             .help(VIDEO_FRAMES_ARG_HELP)
                             .min_values(1)
-                            .forbid_empty_values(true)
+                            .value_parser(NonEmptyStringValueParser::new())
                             .use_value_delimiter(false)
                             .required(true))
                         .arg(Arg::new("repeat")
                             .long("repeat")
                             .help("Number of times the animation is repeated (-1 none, 0 forever or <value> repetitions")
                             .takes_value(true)
+                            .value_parser(value_parser!(i16))
                             .value_name("num"))
                         .get_matches_from(wild::args_os());
 
-    let mut frames: Vec<_> = matches.values_of("FILES").ok_or("Missing files")?.collect();
-    if !matches.is_present("nosort") {
+    let mut frames: Vec<_> = matches.get_many::<String>("FILES").ok_or("?")?.collect();
+    if !matches.contains_id("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
     let frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
 
-    let output_path = DestPath::new(matches.value_of_os("output").ok_or("Missing output")?);
-    let width = parse_opt(matches.value_of("width")).map_err(|_| "Invalid width")?;
-    let height = parse_opt(matches.value_of("height")).map_err(|_| "Invalid height")?;
-    let repeat_int = parse_opt(matches.value_of("repeat")).map_err(|_| "Invalid repeat count")?.unwrap_or(0) as i16;
+    let output_path = DestPath::new(matches.get_one::<PathBuf>("output").ok_or("?")?);
+    let width = matches.get_one::<u32>("width").copied();
+    let height = matches.get_one::<u32>("height").copied();
+    let repeat_int = matches.get_one::<i16>("repeat").copied().unwrap_or(0);
     let repeat = match repeat_int {
         -1 => Repeat::Finite(0),
         0 => Repeat::Infinite,
         _ => Repeat::Finite(repeat_int as u16),
     };
 
-    let extra = matches.is_present("extra");
-    let motion_quality = parse_opt(matches.value_of("motion-quality")).map_err(|_| "Invalid motion quality")?;
-    let lossy_quality = parse_opt(matches.value_of("lossy-quality")).map_err(|_| "Invalid lossy quality")?;
-    let fast = matches.is_present("fast");
+    let extra = matches.contains_id("extra");
+    let motion_quality = matches.get_one::<u8>("motion-quality").copied();
+    let lossy_quality = matches.get_one::<u8>("lossy-quality").copied();
+    let fast = matches.contains_id("fast");
     let settings = Settings {
         width,
         height,
-        quality: parse_opt(matches.value_of("quality")).map_err(|_| "Invalid quality")?.unwrap_or(100),
+        quality: matches.get_one::<u8>("quality").copied().unwrap_or(100),
         fast,
         repeat,
     };
-    let quiet = matches.is_present("quiet") || output_path == DestPath::Stdout;
-    let fps: f32 = matches.value_of("fps").ok_or("Missing fps")?.parse().map_err(|_| "FPS must be a number")?;
-    let speed: f32 = matches.value_of("fast-forward").ok_or("Missing speed")?.parse().map_err(|_| "Speed must be a number")?;
+    let quiet = matches.contains_id("quiet") || output_path == DestPath::Stdout;
+    let fps: f32 = matches.get_one::<f32>("fps").copied().ok_or("?")?;
+    let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
 
     let rate = source::Fps { fps, speed };
 
@@ -172,7 +178,11 @@ fn bin_main() -> BinResult<()> {
         return Err("Quality 100 is maximum".into());
     }
 
-    if fps > 100.0 {
+    if speed > 1000.0 || speed <= 0.0 {
+        return Err("Fast-forward must be 0..1000".into());
+    }
+
+    if fps > 100.0 || fps <= 0.0 {
         return Err("100 fps is maximum".into());
     }
     else if !quiet && fps > 50.0 {
@@ -181,9 +191,7 @@ fn bin_main() -> BinResult<()> {
 
     check_if_paths_exist(&frames)?;
 
-    let mut decoder = if frames.is_empty() {
-        return Err("Please specify input files".into())
-    } else if let [path] = &frames[..] {
+    let mut decoder = if let [path] = &frames[..] {
         match file_type(path).unwrap_or(FileType::Other) {
             FileType::PNG | FileType::JPEG => return Err("Only a single image file was given as an input. This is not enough to make an animation.".into()),
             FileType::GIF => {
@@ -191,6 +199,9 @@ fn bin_main() -> BinResult<()> {
                     eprintln!("warning: reading an existing GIF as an input. This can only worsen the quality. Use PNG frames instead.");
                 }
                 Box::new(gif::GifDecoder::new(path, rate)?)
+            },
+            _ if path.is_dir() => {
+                return Err(format!("{} is a directory, not a PNG file", path.display()).into());
             },
             _ => get_video_decoder(path, rate, settings)?,
         }
@@ -296,13 +307,6 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
     Ok(())
 }
 
-fn parse_opt<T: ::std::str::FromStr<Err = ::std::num::ParseIntError>>(s: Option<&str>) -> BinResult<Option<T>> {
-    match s {
-        Some(s) => Ok(Some(s.parse()?)),
-        None => Ok(None),
-    }
-}
-
 #[derive(PartialEq)]
 enum DestPath<'a> {
     Path(&'a Path),
@@ -310,8 +314,8 @@ enum DestPath<'a> {
 }
 
 impl<'a> DestPath<'a> {
-    pub fn new(path: &'a OsStr) -> Self {
-        if path == "-" {
+    pub fn new(path: &'a Path) -> Self {
+        if path.as_os_str() == "-" {
             Self::Stdout
         } else {
             Self::Path(Path::new(path))
