@@ -7,7 +7,7 @@ pub use imgref::ImgVec;
 pub use rgb::{RGB8, RGBA8};
 
 use crate::error::CatResult;
-use crossbeam_channel::Sender;
+use async_channel::Sender;
 
 #[cfg(feature = "png")]
 use std::path::PathBuf;
@@ -55,7 +55,7 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.send(InputFrame {
+        self.queue.send_blocking(InputFrame {
             frame_index,
             frame: FrameSource::Pixels(frame),
             presentation_timestamp,
@@ -73,7 +73,7 @@ impl Collector {
     #[cfg(feature = "png")]
     #[inline]
     pub fn add_frame_png_data(&self, frame_index: usize, png_data: Vec<u8>, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrame {
+        self.queue.send_blocking(InputFrame {
             frame: FrameSource::PngData(png_data),
             presentation_timestamp,
             frame_index,
@@ -90,7 +90,7 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     #[cfg(feature = "png")]
     pub fn add_frame_png_file(&self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrame {
+        self.queue.send_blocking(InputFrame {
             frame: FrameSource::Path(path),
             presentation_timestamp,
             frame_index,

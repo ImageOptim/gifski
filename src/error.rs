@@ -59,16 +59,9 @@ impl From<gif::EncodingError> for Error {
     }
 }
 
-impl<T> From<crossbeam_channel::SendError<T>> for Error {
+impl<T> From<async_channel::SendError<T>> for Error {
     #[cold]
-    fn from(_: crossbeam_channel::SendError<T>) -> Self {
+    fn from(_: async_channel::SendError<T>) -> Self {
         Self::ThreadSend
-    }
-}
-
-impl From<crossbeam_channel::RecvError> for Error {
-    #[cold]
-    fn from(_: crossbeam_channel::RecvError) -> Self {
-        Self::Aborted
     }
 }

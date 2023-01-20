@@ -1,8 +1,7 @@
 use crate::error::CatResult;
-use crossbeam_channel::{Receiver, Sender};
+use async_channel::{Receiver, Sender};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use std::iter::FusedIterator;
 
 pub struct OrdQueue<T> {
     sender: Sender<ReverseTuple<T>>,
@@ -22,7 +21,7 @@ pub struct OrdQueueIter<T> {
 }
 
 pub fn new<T>(depth: usize) -> (OrdQueue<T>, OrdQueueIter<T>) {
-    let (sender, receiver) = crossbeam_channel::bounded(depth);
+    let (sender, receiver) = async_channel::bounded(depth);
     (OrdQueue {
         sender,
     }, OrdQueueIter {
@@ -33,22 +32,16 @@ pub fn new<T>(depth: usize) -> (OrdQueue<T>, OrdQueueIter<T>) {
 }
 
 impl<T: Send + 'static> OrdQueue<T> {
-    #[inline]
-    pub fn push(&self, index: usize, item: T) -> CatResult<()> {
-        self.sender.send(ReverseTuple(index, item))?;
+    pub async fn push(&self, index: usize, item: T) -> CatResult<()> {
+        self.sender.send(ReverseTuple(index, item)).await?;
         Ok(())
     }
 }
 
-impl<T> FusedIterator for OrdQueueIter<T> {}
-
-impl<T> Iterator for OrdQueueIter<T> {
-    type Item = T;
-
-    #[inline(never)]
-    fn next(&mut self) -> Option<T> {
+impl<T> OrdQueueIter<T> {
+    pub async fn next(&mut self) -> Option<T> {
         while self.receive_buffer.peek().map(|i| i.0) != Some(self.next_index) {
-            match self.receiver.recv() {
+            match self.receiver.recv().await {
                 Ok(item) => {
                     self.receive_buffer.push(item);
                 },
