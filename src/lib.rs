@@ -662,21 +662,24 @@ impl Writer {
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<()> {
         minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
-        let mut inputs = inputs.into_iter().peekable();
+        let mut inputs = inputs.into_iter();
+        let next_frame = inputs.next().ok_or(Error::NoFrames)?;
 
-        let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
+        let DiffMessage {image: first_frame, ..} = &next_frame;
         let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
 
         let mut prev_frame_keeps = false;
         let mut frame_index = 0;
         let mut importance_map = None;
-        while let Some(DiffMessage { image, pts, frame_duration, ordinal_frame_number, importance_map: new_importance_map }) = inputs.next() {
+        let mut next_frame = Some(next_frame);
+        while let Some(DiffMessage { image, pts, frame_duration, ordinal_frame_number, importance_map: new_importance_map }) = next_frame {
+            next_frame = inputs.next();
 
             if importance_map.is_none() {
                 importance_map = Some(new_importance_map);
             }
 
-            let dispose = if let Some(DiffMessage { image: next_image, .. }) = inputs.peek() {
+            let dispose = if let Some(DiffMessage { image: next_image, .. }) = &next_frame {
                 // Skip identical frames
                 if next_image.as_ref() == image.as_ref() {
                     // this keeps importance_map of the previous frame in the identical-frame series
@@ -701,7 +704,7 @@ impl Writer {
             let importance_map = importance_map.take().ok_or(Error::ThreadSend)?; // always set at the beginning
 
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
-                let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {
+                let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = next_frame.as_ref() {
                     next_pts
                 } else {
                     pts + frame_duration
@@ -741,13 +744,14 @@ impl Writer {
         })
     }
 
-    fn remap_frames(inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
-        let mut inputs = inputs.into_iter().peekable();
-        let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
+    fn remap_frames(mut inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
+        let mut frame_index = 0;
+        let first_frame = inputs.next().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
-        let mut frame_index = 0;
-        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf}) = inputs.next() {
+        let mut next_frame = Some(first_frame);
+        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf}) = next_frame {
+            next_frame = inputs.next();
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
@@ -759,7 +763,6 @@ impl Writer {
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
-            let next_frame = inputs.peek();
             let (left, top) = if frame_index != 0 && next_frame.is_some() {
                 let (left, top, new_width, new_height) = match trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
