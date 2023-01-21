@@ -6,15 +6,15 @@ use gifsicle::*;
 use std::io::Write;
 use std::ptr;
 
-pub(crate) struct Gifsicle<'w> {
+pub(crate) struct Gifsicle<W> {
     gfs: *mut Gif_Stream,
     gif_writer: *mut Gif_Writer,
-    out: &'w mut dyn Write,
+    out: W,
     info: Gif_CompressInfo,
 }
 
-impl<'w> Gifsicle<'w> {
-    pub fn new(loss: u32, out: &'w mut (dyn std::io::Write + 'w)) -> Self {
+impl<W> Gifsicle<W> {
+    pub fn new(loss: u32, out: W) -> Self {
         unsafe {
             let mut g = Self {
                 gfs: ptr::null_mut(),
@@ -27,7 +27,9 @@ impl<'w> Gifsicle<'w> {
             g
         }
     }
+}
 
+impl<W: Write> Gifsicle<W> {
     fn flush_writer(&mut self) -> CatResult<()> {
         unsafe {
             if (*self.gif_writer).pos > 0 {
@@ -41,7 +43,7 @@ impl<'w> Gifsicle<'w> {
     }
 }
 
-impl Drop for Gifsicle<'_> {
+impl<W> Drop for Gifsicle<W> {
     fn drop(&mut self) {
         unsafe {
             if !self.gif_writer.is_null() {
@@ -52,7 +54,7 @@ impl Drop for Gifsicle<'_> {
     }
 }
 
-impl Encoder for Gifsicle<'_> {
+impl<W: Write> Encoder for Gifsicle<W> {
     fn finish(&mut self) -> CatResult<()> {
         if !self.gif_writer.is_null() {
             self.flush_writer()?;
