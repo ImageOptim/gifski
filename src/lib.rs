@@ -37,20 +37,21 @@ mod encodegifsicle;
 
 mod minipool;
 
-/// Not a public API
-#[cfg(feature = "binary")]
-#[doc(hidden)]
-pub use minipool::new_channel as private_minipool;
-
 use crossbeam_channel::{Receiver, Sender};
 use std::io::prelude::*;
 use std::num::NonZeroU8;
+use std::path::PathBuf;
 use std::thread;
 use std::sync::atomic::Ordering::Relaxed;
 
+
+enum FrameSource {
+    Pixels(ImgVec<RGBA8>),
+    Path(PathBuf),
+}
 struct InputFrameUnresized {
     /// The pixels to resize and encode
-    frame: ImgVec<RGBA8>,
+    frame: FrameSource,
     /// Time in seconds when to display the frame. First frame should start at 0.
     presentation_timestamp: f64,
     frame_index: usize,
@@ -128,13 +129,13 @@ impl Default for Settings {
 /// Note that writing will finish only when the collector is dropped.
 /// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
 pub struct Collector {
-    queue: Sender<CatResult<InputFrameUnresized>>,
+    queue: Sender<InputFrameUnresized>,
 }
 
 /// Perform GIF writing
 pub struct Writer {
     /// Input frame decoder results
-    queue_iter: Option<Receiver<CatResult<InputFrameUnresized>>>,
+    queue_iter: Option<Receiver<InputFrameUnresized>>,
     settings: SettingsExt,
 }
 
@@ -228,11 +229,11 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.send(Ok(InputFrameUnresized {
+        self.queue.send(InputFrameUnresized {
             frame_index,
-            frame,
+            frame: FrameSource::Pixels(frame),
             presentation_timestamp,
-        }))?;
+        })?;
         Ok(())
     }
 
@@ -244,16 +245,12 @@ impl Collector {
     ///
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     #[cfg(feature = "png")]
-    pub fn add_frame_png_file(&self, frame_index: usize, path: std::path::PathBuf, presentation_timestamp: f64) -> CatResult<()> {
-        let image = lodepng::decode32_file(&path)
-            .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
-
-        let frame = Img::new(image.buffer, image.width, image.height);
-        self.queue.send(Ok(InputFrameUnresized {
-            frame,
+    pub fn add_frame_png_file(&self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
+        self.queue.send(InputFrameUnresized {
+            frame: FrameSource::Path(path),
             presentation_timestamp,
             frame_index,
-        }))?;
+        })?;
         Ok(())
     }
 }
@@ -514,7 +511,7 @@ impl Writer {
         combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
     }
 
-    fn make_resize(inputs: Receiver<CatResult<InputFrameUnresized>>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_resize(inputs: Receiver<InputFrameUnresized>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
         minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into().unwrap()), "resize", move || {
             Ok(())
         }, move |abort| {
@@ -522,8 +519,15 @@ impl Writer {
                 if abort.load(Relaxed) {
                     return Err(Error::Aborted);
                 }
-                let frame = frame?;
-                let resized = resized_binary_alpha(frame.frame, settings.s.width, settings.s.height)?;
+                let image = match frame.frame {
+                    FrameSource::Pixels(image) => image,
+                    FrameSource::Path(path) => {
+                        let image = lodepng::decode32_file(&path)
+                            .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
+                        Img::new(image.buffer, image.width, image.height)
+                    },
+                };
+                let resized = resized_binary_alpha(image, settings.s.width, settings.s.height)?;
                 let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
                 diff_queue.push(frame.frame_index, InputFrame {
                     frame: resized,
