@@ -256,8 +256,6 @@ impl Collector {
     }
 }
 
-#[allow(clippy::identity_op)]
-#[allow(clippy::erasing_op)]
 fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
@@ -299,21 +297,32 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
         image
     };
 
+    dither_image(image.as_mut());
+
+    Ok(image)
+}
+
+#[allow(clippy::identity_op)]
+#[allow(clippy::erasing_op)]
+fn dither_image(mut image: ImgRefMut<RGBA8>) {
+    let width = image.width();
+    let height = image.height();
+
     // dithering of anti-aliased edges can look very fuzzy, so disable it near the edges
-    let mut anti_aliasing = Vec::with_capacity(image.width() * image.height());
-    loop9::loop9(image.as_ref(), 0, 0, image.width(), image.height(), |_x,_y, top, mid, bot| {
-        anti_aliasing.push_in_cap(if mid.curr.a == 255 || mid.curr.a == 0 {
-            false
-        } else {
+    let mut anti_aliasing = vec![false; width * height];
+    loop9::loop9(image.as_ref(), 0, 0, width, height, |x,y, top, mid, bot| {
+        if mid.curr.a != 255 && mid.curr.a != 0 {
             fn is_edge(a: u8, b: u8) -> bool {
                 a < 12 && b >= 240 ||
                 b < 12 && a >= 240
             }
-            is_edge(top.curr.a, bot.curr.a) ||
+            if is_edge(top.curr.a, bot.curr.a) ||
             is_edge(mid.prev.a, mid.next.a) ||
             is_edge(top.prev.a, bot.next.a) ||
-            is_edge(top.next.a, bot.prev.a)
-        });
+            is_edge(top.next.a, bot.prev.a) {
+                anti_aliasing[x + y * width] = true;
+            }
+        }
     });
 
     // this table is already biased, so that px.a doesn't need to be changed
@@ -339,7 +348,6 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
             }
         }
     }
-    Ok(image)
 }
 
 /// `add_frame` is going to resize the image to this size.
