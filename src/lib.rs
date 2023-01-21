@@ -614,7 +614,7 @@ impl Writer {
         let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
 
         let mut prev_frame_keeps = false;
-        let mut consecutive_frame_num = 0;
+        let mut frame_index = 0;
         let mut importance_map = None;
         while let Some(DiffMessage { mut image, pts, frame_duration, ordinal_frame_number, importance_map: new_importance_map }) = inputs.next() {
 
@@ -651,7 +651,7 @@ impl Writer {
                     // if denoiser says the background didn't change, then believe it
                     // (except higher quality settings, which try to improve it every time)
                     let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
-                    if settings.s.fast || (settings.s.quality < 100 && (consecutive_frame_num % 5) >= bg_keep_likelihood) {
+                    if settings.s.fast || (settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood) {
                         image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
                     }
                 }
@@ -663,23 +663,23 @@ impl Writer {
                 };
                 debug_assert!(end_pts > 0.);
 
-                to_remap.send((end_pts, image, importance_map, ordinal_frame_number, consecutive_frame_num, dispose, first_frame_has_transparency, prev_frame_keeps))?;
+                to_remap.send((end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps))?;
 
-                consecutive_frame_num += 1;
+                frame_index += 1;
                 prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
             }
         }
         Ok(())
-        }, move |(end_pts, image, mut importance_map, ordinal_frame_number, consecutive_frame_num, dispose, first_frame_has_transparency, prev_frame_keeps)| {
-            let needs_transparency = consecutive_frame_num > 0 || (consecutive_frame_num == 0 && first_frame_has_transparency);
-            let (liq, remap, liq_image) = Self::quantize(image, &importance_map, consecutive_frame_num == 0, needs_transparency, prev_frame_keeps, settings).unwrap();
+        }, move |(end_pts, image, mut importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps)| {
+            let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
+            let (liq, remap, liq_image) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings).unwrap();
             let max_loss = settings.gifsicle_loss();
             for imp in &mut importance_map {
                 // encoding assumes rgba background looks like encoded background, which is not true for lossy
                 *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
             }
 
-            remap_queue.push(consecutive_frame_num as usize, RemapMessage {
+            remap_queue.push(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
                 end_pts,
                 dispose,
