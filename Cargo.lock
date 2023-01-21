@@ -210,6 +210,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast_image_resize"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9dfb363f2e6085d153901458e45a731486124ff5675939ede8e15f70ea01bd6"
+dependencies = [
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
 name = "ffmpeg-next"
 version = "4.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,6 +303,7 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-utils",
  "dunce",
+ "fast_image_resize",
  "ffmpeg-next",
  "gif",
  "gif-dispose",
@@ -305,7 +316,6 @@ dependencies = [
  "num-traits",
  "pbr",
  "quick-error",
- "resize",
  "rgb",
  "wild",
 ]
@@ -596,16 +606,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 
 [[package]]
-name = "resize"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87e7bdfff05e26408cf8f82fe896ce3d7624f0c0b06c84b2f1009c50452ead41"
-dependencies = [
- "fallible_collections",
- "rgb",
-]
-
-[[package]]
 name = "rgb"
 version = "0.8.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -639,6 +639,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "syn"
+version = "1.0.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f4064b5b16e03ae50984a5a8ed5d4f8803e6bc1fd170a3cda91a1be4b18e3f5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -652,6 +663,26 @@ name = "textwrap"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
+
+[[package]]
+name = "thiserror"
+version = "1.0.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a9cd18aa97d5c45c6603caea1da6628790b37f7a34b6ca89522331c5180fed0"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fb327af4685e4d03fa8cbcf1716380da910eeb2bb8be417e7f9fd3fb164f36f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "thread_local"

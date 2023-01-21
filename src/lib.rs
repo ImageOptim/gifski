@@ -43,6 +43,7 @@ use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::thread;
 use std::sync::atomic::Ordering::Relaxed;
+use fast_image_resize as fr;
 
 
 enum FrameSource {
@@ -209,7 +210,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         Writer {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
-                max_threads: thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8).try_into().unwrap(),
+                max_threads: thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8).try_into()?,
                 motion_quality: settings.quality,
                 giflossy_quality: settings.quality,
                 extra_effort: false,
@@ -261,13 +262,38 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
     let mut image = if width != image.width() || height != image.height() {
-        let tmp = image.as_ref();
-        let (buf, img_width, img_height) = tmp.to_contiguous_buf();
-        assert_eq!(buf.len(), img_width * img_height);
+        let (mut buf, img_width, img_height) = image.into_contiguous_buf();
+        debug_assert_eq!(buf.len(), img_width * img_height);
 
-        let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
+        let mut src_image = fr::Image::from_slice_u8(
+            (img_width as u32).try_into()?,
+            (img_height as u32).try_into()?,
+            buf.as_bytes_mut(),
+            fr::PixelType::U8x4,
+        )?;
+
+        let alpha_mul_div = fr::MulDiv::default();
+        alpha_mul_div.multiply_alpha_inplace(&mut src_image.view_mut())?;
+
         let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
-        r.resize(&buf, &mut dst)?;
+
+        let mut dst_image = fr::Image::from_slice_u8(
+            (width as u32).try_into()?,
+            (height as u32).try_into()?,
+            dst.as_bytes_mut(),
+            fr::PixelType::U8x4,
+        )?;
+
+        let mut dst_view = dst_image.view_mut();
+
+        let mut resizer = fr::Resizer::new(
+            fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3),
+        );
+        resizer.resize(&src_image.view(), &mut dst_view)?;
+
+        // Divide RGB channels of destination image by alpha
+        alpha_mul_div.divide_alpha_inplace(&mut dst_view)?;
+
         ImgVec::new(dst, width, height)
     } else {
         image
@@ -512,7 +538,7 @@ impl Writer {
     }
 
     fn make_resize(inputs: Receiver<InputFrameUnresized>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into().unwrap()), "resize", move || {
+        minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
             Ok(())
         }, move |abort| {
             for frame in inputs {
@@ -611,7 +637,7 @@ impl Writer {
     }
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new_channel(settings.max_threads.min(3.try_into().unwrap()), "quant", move |to_remap| {
+        minipool::new_channel(settings.max_threads.min(3.try_into()?), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
         let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
