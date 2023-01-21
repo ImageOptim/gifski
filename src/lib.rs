@@ -537,6 +537,7 @@ impl Writer {
         combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
     }
 
+    /// Apply resizing and crate a blurred version for the diff/denoise phase
     fn make_resize(inputs: Receiver<InputFrameUnresized>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
         minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
             Ok(())
@@ -565,8 +566,8 @@ impl Writer {
         })
     }
 
-    fn make_diffs(inputs: OrdQueueIter<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
-        let mut inputs = inputs.into_iter();
+    /// Find differences between frames, and compute importance maps
+    fn make_diffs(mut inputs: OrdQueueIter<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {

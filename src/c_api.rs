@@ -137,7 +137,7 @@ pub unsafe extern "C" fn gifski_set_motion_quality(handle: *mut GifskiHandle, qu
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    if let Some(w) = &mut *g.writer.lock().unwrap() {
+    if let Ok(Some(w)) = g.writer.lock().as_deref_mut() {
         #[allow(deprecated)]
         w.set_motion_quality(quality);
         GifskiError::OK
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn gifski_set_lossy_quality(handle: *mut GifskiHandle, qua
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    if let Some(w) = &mut *g.writer.lock().unwrap() {
+    if let Ok(Some(w)) = g.writer.lock().as_deref_mut() {
         #[allow(deprecated)]
         w.set_lossy_quality(quality);
         GifskiError::OK
@@ -173,7 +173,7 @@ pub unsafe extern "C" fn gifski_set_extra_effort(handle: *mut GifskiHandle, extr
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    if let Some(w) = &mut *g.writer.lock().unwrap() {
+    if let Ok(Some(w)) = g.writer.lock().as_deref_mut() {
         #[allow(deprecated)]
         w.set_extra_effort(extra);
         GifskiError::OK
@@ -211,7 +211,7 @@ pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, 
     } else {
         return GifskiError::INVALID_INPUT;
     };
-    if let Some(ref mut c) = *g.collector.lock().unwrap() {
+    if let Ok(Some(c)) = g.collector.lock().as_deref_mut() {
         c.add_frame_png_file(frame_number as usize, path, presentation_timestamp).into()
     } else {
         eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
@@ -264,7 +264,7 @@ fn add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, frame: ImgVec<
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    if let Some(ref mut c) = *g.collector.lock().unwrap() {
+    if let Ok(Some(c)) = g.collector.lock().as_deref_mut() {
         c.add_frame_rgba(frame_number as usize, frame, presentation_timestamp).into()
     } else {
         eprintln!("frames can't be added any more, because gifski_end_adding_frames has been called already");
@@ -296,7 +296,7 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
         b: p.b,
         a: p.a,
     })).collect(), width, height as usize);
-    add_frame_rgba(handle, frame_number, img.into(), presentation_timestamp)
+    add_frame_rgba(handle, frame_number, img, presentation_timestamp)
 }
 
 /// Same as `gifski_add_frame_rgba`, except it expects RGB components (3 bytes per pixel).
@@ -318,7 +318,7 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
     }
     let pixels = slice::from_raw_parts(pixels, stride * height as usize);
     let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.alpha(255))).collect(), width, height as usize);
-    add_frame_rgba(handle, frame_number, img.into(), presentation_timestamp)
+    add_frame_rgba(handle, frame_number, img, presentation_timestamp)
 }
 
 /// Get a callback for frame processed, and abort processing if desired.
@@ -453,8 +453,7 @@ fn gifski_write_thread_start<W: 'static +  Write + Send>(g: &GifskiHandleInterna
                 progress = &mut *cb;
             }
             match writer.write(file, progress).into() {
-                res @ GifskiError::OK |
-                res @ GifskiError::ALREADY_EXISTS => res,
+                res @ (GifskiError::OK | GifskiError::ALREADY_EXISTS) => res,
                 err => {
                     if let Some(path) = path {
                         let _ = fs::remove_file(path); // clean up unfinished file

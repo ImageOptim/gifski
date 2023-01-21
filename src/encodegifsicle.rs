@@ -83,7 +83,7 @@ impl<W: Write> Encoder for Gifsicle<W> {
             gfs.loopcount = match settings.repeat {
                 Repeat::Finite(0) => -1,
                 Repeat::Infinite => 0,
-                Repeat::Finite(x) => x as _,
+                Repeat::Finite(x) => i64::from(x),
             };
             unsafe {
                 self.gif_writer = Gif_IncrementalWriteFileInit(gfs, &self.info, ptr::null_mut());

@@ -269,6 +269,7 @@ fn bin_main() -> BinResult<()> {
     Ok(())
 }
 
+#[allow(clippy::upper_case_acronyms)]
 enum FileType {
     PNG, GIF, JPEG, Other,
 }
@@ -284,7 +285,7 @@ fn file_type(path: &Path) -> BinResult<FileType> {
     if &buf == b"GIF8" {
         return Ok(FileType::GIF);
     }
-    if &buf[..2] == [0xFF, 0xD8] {
+    if buf[..2] == [0xFF, 0xD8] {
         return Ok(FileType::JPEG);
     }
     Ok(FileType::Other)

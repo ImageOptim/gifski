@@ -37,7 +37,7 @@ impl Source for GifDecoder {
         let mut idx = 0;
         let mut delay_ts = 0;
         while let Some(frame) = self.decoder.read_next_frame()? {
-            self.screen.blit_frame(&frame)?;
+            self.screen.blit_frame(frame)?;
             let pixels = self.screen.pixels.clone();
             let presentation_timestamp = f64::from(delay_ts) * (self.speed as f64 / 100.);
             c.add_frame_rgba(idx, pixels, presentation_timestamp)?;
