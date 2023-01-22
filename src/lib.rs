@@ -172,6 +172,7 @@ struct RemapMessage {
     liq: Attributes,
     remap: QuantizationResult,
     liq_image: Image<'static>,
+    out_buf: Vec<u8>,
 }
 
 /// Frame post quantization and remap
@@ -422,16 +423,15 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>)> {
-        let SettingsExt {s: settings, extra_effort, motion_quality: _, giflossy_quality: _, max_threads: _ } = settings;
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
         let mut liq = Attributes::new();
-        if settings.fast {
+        if settings.s.fast {
             liq.set_speed(10)?;
-        } else if *extra_effort {
+        } else if settings.extra_effort {
             liq.set_speed(1)?;
         }
         let quality = if !first_frame {
-            settings.color_quality()
+            settings.s.color_quality()
         } else {
             100 // the first frame is too important to ruin it
         };
@@ -449,18 +449,23 @@ impl Writer {
         if needs_transparency {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0))?;
         }
-        let res = liq.quantize(&mut img)?;
-        Ok((liq, res, img))
+
+        let mut res = liq.quantize(&mut img)?;
+        res.set_dithering_level((f32::from(settings.s.quality) / 50.0 - 1.).max(0.))?;
+
+        let mut out = Vec::new();
+        out.try_reserve_exact(width*height).map_err(imagequant::liq_error::from)?;
+        res.optionally_prepare_for_dithering_with_background_set(&mut img, &mut out.spare_capacity_mut()[..width*height])?;
+
+        Ok((liq, res, img, out))
     }
 
-    fn remap<'a>(liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, settings: &Settings) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn remap<'a>(liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, mut pal_img: Vec<u8>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         if let Some(bg) = background {
             img.set_background(Image::new_stride_borrowed(&liq, bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
 
-        res.set_dithering_level((f32::from(settings.quality) / 50.0 - 1.).max(0.))?;
-
-        let (pal, pal_img) = res.remapped(&mut img)?;
+        let pal = res.remap_into_vec(&mut img, &mut pal_img)?;
         debug_assert_eq!(img.width() * img.height(), pal_img.len());
 
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
@@ -528,7 +533,6 @@ impl Writer {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
         let settings_ext = self.settings;
-        let settings = self.settings.s;
         let (diff_queue, diff_queue_recv) = ordqueue::new(2);
         let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
             Self::make_resize(decode_queue_recv, diff_queue, &settings_ext)
@@ -543,7 +547,7 @@ impl Writer {
         })?;
         let (write_queue, write_queue_recv) = crossbeam_channel::bounded(2);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
-            Self::remap_frames(remap_queue_recv, write_queue, &settings)
+            Self::remap_frames(remap_queue_recv, write_queue)
         })?;
         let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext, reporter);
         let res1 = resize_thread.join().map_err(|_| Error::ThreadSend)?;
@@ -654,7 +658,7 @@ impl Writer {
     }
 
     fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new_channel(settings.max_threads.min(3.try_into()?), "quant", move |to_remap| {
+        minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
         let DiffMessage {image: first_frame, ..} = inputs.peek().ok_or(Error::NoFrames)?;
@@ -719,7 +723,7 @@ impl Writer {
         Ok(())
         }, move |(end_pts, image, mut importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps)| {
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
-            let (liq, remap, liq_image) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings).unwrap();
+            let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings).unwrap();
             let max_loss = settings.gifsicle_loss();
             for imp in &mut importance_map {
                 // encoding assumes rgba background looks like encoded background, which is not true for lossy
@@ -732,24 +736,25 @@ impl Writer {
                 dispose,
                 liq, remap,
                 liq_image,
+                out_buf,
             })
         })
     }
 
-    fn remap_frames(inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>, settings: &Settings) -> CatResult<()> {
+    fn remap_frames(inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
         let mut inputs = inputs.into_iter().peekable();
         let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
         let mut frame_index = 0;
-        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image}) = inputs.next() {
+        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf}) = inputs.next() {
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
 
             let (mut image8, mut image8_pal) = {
                 let bg = if frame_index != 0 { Some(screen_after_dispose.pixels()) } else { None };
-                Self::remap(liq, remap, liq_image, bg, settings)?
+                Self::remap(liq, remap, liq_image, bg, out_buf)?
             };
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
