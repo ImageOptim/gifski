@@ -201,8 +201,9 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
     if settings.width.unwrap_or(0) > 1<<16 || settings.height.unwrap_or(0) > 1<<16 {
         return Err(Error::WrongSize("image size too large".into()));
     }
-    let (queue, queue_iter) = crossbeam_channel::bounded(6); // should be sufficient for denoiser lookahead
 
+    let max_threads = thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8);
+    let (queue, queue_iter) = crossbeam_channel::bounded(5.min(max_threads.into())); // should be sufficient for denoiser lookahead
     Ok((
         Collector {
             queue,
@@ -210,7 +211,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         Writer {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
-                max_threads: thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8).try_into()?,
+                max_threads: max_threads.try_into()?,
                 motion_quality: settings.quality,
                 giflossy_quality: settings.quality,
                 extra_effort: false,
@@ -507,19 +508,19 @@ impl Writer {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
         let settings_ext = self.settings;
-        let (diff_queue, diff_queue_recv) = ordqueue::new(2);
+        let (diff_queue, diff_queue_recv) = ordqueue::new(0);
         let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
             Self::make_resize(decode_queue_recv, diff_queue, &settings_ext)
         })?;
-        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(2);
+        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(0);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
             Self::make_diffs(diff_queue_recv, quant_queue, &settings_ext)
         })?;
-        let (remap_queue, remap_queue_recv) = ordqueue::new(2);
+        let (remap_queue, remap_queue_recv) = ordqueue::new(0);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
             Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext)
         })?;
-        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(2);
+        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(0);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue)
         })?;
