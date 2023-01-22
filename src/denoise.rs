@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use crate::PushInCapacity;
 pub use imgref::ImgRef;
 use imgref::ImgVec;
@@ -72,8 +73,8 @@ pub struct Denoiser<T> {
     frames: usize,
     threshold: u32,
     splat: ImgVec<Acc>,
-    processed: Vec<(ImgVec<RGBA8>, ImgVec<u8>)>,
-    metadatas: Vec<T>,
+    processed: VecDeque<(ImgVec<RGBA8>, ImgVec<u8>)>,
+    metadatas: VecDeque<T>,
 }
 
 #[derive(Debug)]
@@ -95,8 +96,8 @@ impl<T> Denoiser<T> {
         };
         Self {
             frames: 0,
-            processed: Vec::with_capacity(LOOKAHEAD),
-            metadatas: Vec::with_capacity(LOOKAHEAD),
+            processed: VecDeque::with_capacity(LOOKAHEAD),
+            metadatas: VecDeque::with_capacity(LOOKAHEAD),
             threshold: (55 - u32::from(quality) / 2).pow(2),
             splat: ImgVec::new(vec![clear; area], width, height),
         }
@@ -126,7 +127,7 @@ impl<T> Denoiser<T> {
             if self.frames >= LOOKAHEAD {
                 let median1 = ImgVec::new(median1, self.splat.width(), self.splat.height());
                 let imp_map1 = ImgVec::new(imp_map1, self.splat.width(), self.splat.height());
-                self.processed.insert(0, (median1, imp_map1));
+                self.processed.push_front((median1, imp_map1));
             }
         }
     }
@@ -142,7 +143,7 @@ impl<T> Denoiser<T> {
             return Err(WrongSizeError);
         }
 
-        self.metadatas.insert(0, frame_metadata);
+        self.metadatas.push_front(frame_metadata);
 
         self.frames += 1;
         // Can't output anything yet
@@ -163,13 +164,13 @@ impl<T> Denoiser<T> {
 
         let median = ImgVec::new(median, frame.width(), frame.height());
         let imp_map = ImgVec::new(imp_map, frame.width(), frame.height());
-        self.processed.insert(0, (median, imp_map));
+        self.processed.push_front((median, imp_map));
         Ok(())
     }
 
     pub fn pop(&mut self) -> Denoised<T> {
-        if let Some((frame, importance_map)) = self.processed.pop() {
-            let meta = self.metadatas.pop().expect("meta");
+        if let Some((frame, importance_map)) = self.processed.pop_back() {
+            let meta = self.metadatas.pop_back().expect("meta");
             Denoised::Frame { frame, importance_map, meta }
         } else if !self.metadatas.is_empty() {
             Denoised::NotYet
