@@ -411,6 +411,9 @@ impl Writer {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality)?;
+        if settings.s.quality < 50 {
+            liq.set_max_colors(u32::from(settings.s.quality * 2).max(16).next_power_of_two())?;
+        }
         let (buf, width, height) = image.into_contiguous_buf();
         let mut img = liq.new_image(buf, width, height, 0.)?;
         // only later remapping tracks which area has been damaged by transparency
