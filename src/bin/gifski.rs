@@ -14,7 +14,7 @@ use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
-use clap::{Command, AppSettings, Arg};
+use clap::{Command, Arg, ArgAction};
 
 use std::env;
 use std::fmt;
@@ -44,14 +44,13 @@ fn bin_main() -> BinResult<()> {
     let matches = Command::new(clap::crate_name!())
                         .version(clap::crate_version!())
                         .about("https://gif.ski by Kornel Lesiński")
-                        .setting(AppSettings::DeriveDisplayOrder)
                         .arg_required_else_help(true)
                         .allow_negative_numbers(true)
                         .arg(Arg::new("output")
                             .long("output")
                             .short('o')
                             .help("Destination file to write to; \"-\" means stdout")
-                            .takes_value(true)
+                            .num_args(1)
                             .value_name("a.gif")
                             .value_parser(value_parser!(PathBuf))
                             .required(true))
@@ -73,70 +72,78 @@ fn bin_main() -> BinResult<()> {
                             .value_name("x")
                             .default_value("1"))
                         .arg(Arg::new("fast")
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
                             .long("fast")
                             .help("50% faster encoding, but 10% worse quality and larger file size"))
                         .arg(Arg::new("extra")
                             .long("extra")
                             .conflicts_with("fast")
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
                             .help("50% slower encoding, but 1% better quality"))
                         .arg(Arg::new("quality")
                             .long("quality")
                             .short('Q')
                             .value_name("1-100")
                             .value_parser(value_parser!(u8).range(1..=100))
-                            .takes_value(true)
+                            .num_args(1)
                             .default_value("90")
                             .help("Lower quality may give smaller file"))
                         .arg(Arg::new("motion-quality")
                             .long("motion-quality")
                             .value_name("1-100")
                             .value_parser(value_parser!(u8).range(1..=100))
-                            .takes_value(true)
+                            .num_args(1)
                             .help("Lower values reduce motion"))
                         .arg(Arg::new("lossy-quality")
                             .long("lossy-quality")
                             .value_name("1-100")
                             .value_parser(value_parser!(u8).range(1..=100))
-                            .takes_value(true)
+                            .num_args(1)
                             .help("Lower values introduce noise and streaks"))
                         .arg(Arg::new("width")
                             .long("width")
                             .short('W')
-                            .takes_value(true)
+                            .num_args(1)
                             .value_parser(value_parser!(u32))
                             .value_name("px")
                             .help("Maximum width.\nBy default anims are limited to about 800x600"))
                         .arg(Arg::new("height")
                             .long("height")
                             .short('H')
-                            .takes_value(true)
+                            .num_args(1)
                             .value_parser(value_parser!(u32))
                             .value_name("px")
                             .help("Maximum height (stretches if the width is also set)"))
                         .arg(Arg::new("nosort")
                             .alias("nosort")
                             .long("no-sort")
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
                             .help("Use files exactly in the order given, rather than sorted"))
                         .arg(Arg::new("quiet")
                             .long("quiet")
                             .short('q')
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
                             .help("Do not display anything on standard output/console"))
                         .arg(Arg::new("FILES")
                             .help(VIDEO_FRAMES_ARG_HELP)
-                            .min_values(1)
+                            .num_args(1..)
                             .value_parser(NonEmptyStringValueParser::new())
                             .use_value_delimiter(false)
                             .required(true))
                         .arg(Arg::new("repeat")
                             .long("repeat")
                             .help("Number of times the animation is repeated (-1 none, 0 forever or <value> repetitions")
-                            .takes_value(true)
+                            .num_args(1)
                             .value_parser(value_parser!(i16))
                             .value_name("num"))
                         .get_matches_from(wild::args_os());
 
     let mut frames: Vec<_> = matches.get_many::<String>("FILES").ok_or("?")?.collect();
-    if !matches.contains_id("nosort") {
+    if !matches.get_flag("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
     let frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
@@ -151,10 +158,10 @@ fn bin_main() -> BinResult<()> {
         _ => Repeat::Finite(repeat_int as u16),
     };
 
-    let extra = matches.contains_id("extra");
+    let extra = matches.get_flag("extra");
     let motion_quality = matches.get_one::<u8>("motion-quality").copied();
     let lossy_quality = matches.get_one::<u8>("lossy-quality").copied();
-    let fast = matches.contains_id("fast");
+    let fast = matches.get_flag("fast");
     let settings = Settings {
         width,
         height,
@@ -162,7 +169,7 @@ fn bin_main() -> BinResult<()> {
         fast,
         repeat,
     };
-    let quiet = matches.contains_id("quiet") || output_path == DestPath::Stdout;
+    let quiet = matches.get_flag("quiet") || output_path == DestPath::Stdout;
     let fps: f32 = matches.get_one::<f32>("fps").copied().ok_or("?")?;
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
 
