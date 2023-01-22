@@ -17,6 +17,7 @@
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
+use encoderust::RustEncoder;
 use imagequant::{Image, QuantizationResult, Attributes};
 use imgref::*;
 use rgb::*;
@@ -32,8 +33,8 @@ mod denoise;
 use crate::denoise::*;
 mod encoderust;
 
-#[cfg(feature = "gifsicle")]
-mod encodegifsicle;
+// #[cfg(feature = "gifsicle")]
+// mod encodegifsicle;
 
 mod minipool;
 
@@ -110,7 +111,11 @@ impl Settings {
 
 impl SettingsExt {
     pub(crate) fn gifsicle_loss(&self) -> u32 {
-        (100. / 5. - f32::from(self.giflossy_quality) / 5.).powf(1.8).ceil() as u32 + 10
+        if cfg!(feature = "gifsicle") && self.giflossy_quality < 100 {
+            (100. / 5. - f32::from(self.giflossy_quality) / 5.).powf(1.8).ceil() as u32 + 10
+        } else {
+            0
+        }
     }
 }
 
@@ -143,19 +148,10 @@ pub struct Writer {
 struct GIFFrame {
     left: u16,
     top: u16,
-    screen_width: u16,
-    screen_height: u16,
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     dispose: gif::DisposalMethod,
     transparent_index: Option<u8>,
-}
-
-trait Encoder {
-    fn write_frame(&mut self, frame: GIFFrame, delay: u16, settings: &Settings) -> CatResult<()>;
-    fn finish(&mut self) -> CatResult<()> {
-        Ok(())
-    }
 }
 
 /// Frame before quantization
@@ -180,10 +176,14 @@ struct RemapMessage {
 
 /// Frame post quantization and remap
 struct FrameMessage {
+    /// 0..
+    frame_index: usize,
     /// 1..
     ordinal_frame_number: usize,
     end_pts: f64,
     frame: GIFFrame,
+    screen_width: u16,
+    screen_height: u16,
 }
 
 /// Start new encoding
@@ -466,36 +466,52 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    fn write_frames(write_queue: Receiver<FrameMessage>, enc: &mut dyn Encoder, settings: &Settings, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let mut pts_in_delay_units = 0_u64;
+    fn write_frames(write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        let (send, recv) = ordqueue::new(2);
+        minipool::new_scope((if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
+            let mut pts_in_delay_units = 0_u64;
 
-        let mut n_done = 0;
-        for FrameMessage {frame, ordinal_frame_number, end_pts, ..} in write_queue {
-            let delay = ((end_pts * 100.0).round() as u64)
-                .saturating_sub(pts_in_delay_units)
-                .min(30000) as u16;
-            pts_in_delay_units += u64::from(delay);
+            let mut enc = RustEncoder::new(writer);
 
-            debug_assert_ne!(0, delay);
+            let mut n_done = 0;
+            for tmp in recv {
+                let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (f64, _, _, _, _) = tmp;
+                let delay = ((end_pts * 100_f64).round() as u64)
+                    .saturating_sub(pts_in_delay_units)
+                    .min(30000) as u16;
+                pts_in_delay_units += u64::from(delay);
 
-            // skip frames with bad pts
-            if delay != 0 {
-                enc.write_frame(frame, delay, settings)?;
-            }
+                debug_assert_ne!(0, delay);
 
-            // loop to report skipped frames too
-            while n_done < ordinal_frame_number {
-                n_done += 1;
-                if !reporter.increase() {
-                    return Err(Error::Aborted);
+                // skip frames with bad pts
+                if delay != 0 {
+                    enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
+                }
+
+                // loop to report skipped frames too
+                while n_done < ordinal_frame_number {
+                    n_done += 1;
+                    if !reporter.increase() {
+                        return Err(Error::Aborted);
+                    }
                 }
             }
-        }
-        if n_done == 0 {
-            Err(Error::NoFrames)
-        } else {
-            enc.finish()
-        }
+            if n_done == 0 {
+                Err(Error::NoFrames)
+            } else {
+                Ok(())
+            }
+        }, move |abort| {
+            for FrameMessage {frame, frame_index, ordinal_frame_number, end_pts, screen_width, screen_height } in write_queue {
+                if abort.load(Relaxed) {
+                    return Err(Error::Aborted);
+                }
+
+                let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, settings)?;
+                send.push(frame_index, (end_pts, ordinal_frame_number, frame, screen_width, screen_height))?;
+            }
+            Ok(())
+        })
     }
 
     /// Start writing frames. This function will not return until `Collector` is dropped.
@@ -505,18 +521,10 @@ impl Writer {
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
     #[allow(unused_mut)]
     pub fn write<W: Write>(self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-
-        #[cfg(feature = "gifsicle")]
-        {
-            if self.settings.giflossy_quality < 100 {
-                let mut gifsicle = encodegifsicle::Gifsicle::new(self.settings.gifsicle_loss(), &mut writer);
-                return self.write_with_encoder(&mut gifsicle, reporter);
-            }
-        }
-        self.write_with_encoder(&mut encoderust::RustEncoder::new(writer), reporter)
+        self.write_inner(&mut writer, reporter)
     }
 
-    fn write_with_encoder(mut self, encoder: &mut dyn Encoder, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    fn write_inner(mut self, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
         let settings_ext = self.settings;
@@ -537,7 +545,7 @@ impl Writer {
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue, &settings)
         })?;
-        let res0 = Self::write_frames(write_queue_recv, encoder, &self.settings.s, reporter);
+        let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext, reporter);
         let res1 = resize_thread.join().map_err(|_| Error::ThreadSend)?;
         let res2 = diff_thread.join().map_err(|_| Error::ThreadSend)?;
         let res3 = quant_thread.join().map_err(|_| Error::ThreadSend)?;
@@ -733,21 +741,21 @@ impl Writer {
         let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
-        let mut is_first_frame = true;
+        let mut frame_index = 0;
         while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image}) = inputs.next() {
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
 
             let (mut image8, mut image8_pal) = {
-                let bg = if !is_first_frame { Some(screen_after_dispose.pixels()) } else { None };
+                let bg = if frame_index != 0 { Some(screen_after_dispose.pixels()) } else { None };
                 Self::remap(liq, remap, liq_image, bg, settings)?
             };
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
             let next_frame = inputs.peek();
-            let (left, top, image8) = if !is_first_frame && next_frame.is_some() {
+            let (left, top, image8) = if frame_index != 0 && next_frame.is_some() {
                 match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
                     None => continue, // no pixels need to be changed after dispose
@@ -760,21 +768,21 @@ impl Writer {
             screen_after_dispose.then_blit(Some(&image8_pal), dispose, left, top as _, image8.as_ref(), transparent_index)?;
 
             write_queue.send(FrameMessage {
+                frame_index,
                 ordinal_frame_number,
                 end_pts,
+                screen_width,
+                screen_height,
                 frame: GIFFrame {
                     left,
                     top,
-                    screen_width,
-                    screen_height,
                     image: image8,
                     pal: image8_pal,
                     transparent_index,
                     dispose,
                 },
             })?;
-
-            is_first_frame = false;
+            frame_index += 1;
         }
         Ok(())
     }

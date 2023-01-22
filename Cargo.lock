@@ -69,9 +69,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bytemuck"
-version = "1.12.3"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaa3a8d9a1ca92e282c96a32d6511b695d7d994d1d102ba85d279f9b2756947f"
+checksum = "c041d3eab048880cb0b86b256447da3f18859a163c3b8d8893f4e6368abe6393"
 
 [[package]]
 name = "cc"
@@ -287,9 +287,9 @@ dependencies = [
 
 [[package]]
 name = "gifsicle"
-version = "1.92.5"
+version = "1.93.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36998a2316aad26c8bfd74c82a8809eaf12e2216a2938bc4dca5b83c59fb3e1a"
+checksum = "0d2c35b9670c2a3313343ce54d00669ca18a8236fe727f52e0cf8c5a77acac07"
 dependencies = [
  "cc",
  "libc",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -317,6 +317,7 @@ dependencies = [
  "pbr",
  "quick-error",
  "rgb",
+ "scopeguard",
  "wild",
 ]
 
