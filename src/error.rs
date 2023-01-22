@@ -1,6 +1,3 @@
-use fast_image_resize::MulDivImageError;
-use fast_image_resize::ImageBufferError;
-use fast_image_resize::DifferentTypesOfPixelsError;
 use std::num::TryFromIntError;
 use std::io;
 use quick_error::quick_error;
@@ -33,9 +30,7 @@ quick_error! {
         WrongSize(msg: String) {
             display("{}", msg)
             from(e: TryFromIntError) -> (e.to_string())
-            from(e: ImageBufferError) -> (e.to_string())
-            from(e: MulDivImageError) -> (e.to_string())
-            from(e: DifferentTypesOfPixelsError) -> (e.to_string())
+            from(e: resize::Error) -> (e.to_string())
         }
         Quant(liq: imagequant::liq_error) {
             from()

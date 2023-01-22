@@ -44,7 +44,6 @@ use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::thread;
 use std::sync::atomic::Ordering::Relaxed;
-use fast_image_resize as fr;
 
 
 enum FrameSource {
@@ -261,38 +260,13 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
     let mut image = if width != image.width() || height != image.height() {
-        let (mut buf, img_width, img_height) = image.into_contiguous_buf();
-        debug_assert_eq!(buf.len(), img_width * img_height);
+        let tmp = image.as_ref();
+        let (buf, img_width, img_height) = tmp.to_contiguous_buf();
+        assert_eq!(buf.len(), img_width * img_height);
 
-        let mut src_image = fr::Image::from_slice_u8(
-            (img_width as u32).try_into()?,
-            (img_height as u32).try_into()?,
-            buf.as_bytes_mut(),
-            fr::PixelType::U8x4,
-        )?;
-
-        let alpha_mul_div = fr::MulDiv::default();
-        alpha_mul_div.multiply_alpha_inplace(&mut src_image.view_mut())?;
-
+        let mut r = resize::new(img_width, img_height, width, height, resize::Pixel::RGBA8P, resize::Type::Lanczos3)?;
         let mut dst = vec![RGBA8::new(0, 0, 0, 0); width * height];
-
-        let mut dst_image = fr::Image::from_slice_u8(
-            (width as u32).try_into()?,
-            (height as u32).try_into()?,
-            dst.as_bytes_mut(),
-            fr::PixelType::U8x4,
-        )?;
-
-        let mut dst_view = dst_image.view_mut();
-
-        let mut resizer = fr::Resizer::new(
-            fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3),
-        );
-        resizer.resize(&src_image.view(), &mut dst_view)?;
-
-        // Divide RGB channels of destination image by alpha
-        alpha_mul_div.divide_alpha_inplace(&mut dst_view)?;
-
+        r.resize(&buf, &mut dst)?;
         ImgVec::new(dst, width, height)
     } else {
         image
