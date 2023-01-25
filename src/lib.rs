@@ -429,7 +429,7 @@ impl Writer {
         }
 
         let mut res = liq.quantize(&mut img)?;
-        res.set_dithering_level((f32::from(settings.s.quality) / 50.0 - 1.).max(0.))?;
+        res.set_dithering_level((f32::from(settings.s.quality) / 50.0 - 1.).max(0.2))?;
 
         let mut out = Vec::new();
         out.try_reserve_exact(width*height).map_err(imagequant::liq_error::from)?;
