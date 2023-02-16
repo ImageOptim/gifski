@@ -665,11 +665,12 @@ fn cant_write_after_finish() {
         repeat: -1,
     })};
     assert!(!g.is_null());
-    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, _: *mut c_void) -> c_int {
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, u1: *mut c_void) -> c_int {
+        assert_eq!(u1 as usize, 1);
         0
     }
     unsafe {
-        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 0 as _));
+        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 1 as _));
         assert_eq!(GifskiError::INVALID_STATE, gifski_finish(g));
     }
 }
@@ -690,6 +691,33 @@ fn c_write_failure_propagated() {
         assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), ptr::null_mut()));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 5.0));
         assert_eq!(GifskiError::WRITE_ZERO, gifski_finish(g));
+    }
+}
+
+#[test]
+fn test_error_callback() {
+    let g = unsafe { gifski_new(&GifskiSettings {
+        width: 1, height: 1,
+        quality: 100,
+        fast: false,
+        repeat: -1,
+    })};
+    assert!(!g.is_null());
+    unsafe extern "C" fn cb(_s: usize, _buf: *const u8, u1: *mut c_void) -> c_int {
+        assert_eq!(u1 as usize, 1);
+        0
+    }
+    unsafe extern "C" fn errcb(msg: *const c_char, user_data: *mut c_void) {
+        let callback_msg = user_data as *mut Option<String>;
+        *callback_msg = Some(CStr::from_ptr(msg).to_str().unwrap().to_string());
+    }
+    let mut callback_msg: Option<String> = None;
+    unsafe {
+        assert_eq!(GifskiError::OK, gifski_set_error_message_callback(g, errcb, &mut callback_msg as *mut _ as _));
+        assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 1 as _));
+        assert_eq!(GifskiError::INVALID_STATE, gifski_set_write_callback(g, Some(cb), 1 as _));
+        assert_eq!(GifskiError::INVALID_STATE, gifski_finish(g));
+        assert_eq!("gifski_set_file_output/gifski_set_write_callback has been called already", callback_msg.unwrap());
     }
 }
 
