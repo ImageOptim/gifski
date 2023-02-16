@@ -57,6 +57,7 @@ use std::sync::Mutex;
 use std::thread;
 mod c_api_error;
 use self::c_api_error::GifskiError;
+use std::panic::catch_unwind;
 
 /// Settings for creating a new encoder instance. See `gifski_new`
 #[repr(C)]
@@ -368,11 +369,14 @@ pub unsafe extern "C" fn gifski_set_file_output(handle: *const GifskiHandle, des
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    let (file, path) = match prepare_for_file_writing(g, destination) {
-        Ok(res) => res,
-        Err(err) => return err,
-    };
-    gifski_write_thread_start(g, file, Some(path)).err().unwrap_or(GifskiError::OK)
+    catch_unwind(move || {
+        let (file, path) = match prepare_for_file_writing(g, destination) {
+            Ok(res) => res,
+            Err(err) => return err,
+        };
+        gifski_write_thread_start(g, file, Some(path)).err().unwrap_or(GifskiError::OK)
+    })
+    .map_err(print_panic).unwrap_or(GifskiError::THREAD_LOST)
 }
 
 
@@ -438,12 +442,15 @@ pub unsafe extern "C" fn gifski_set_write_callback(handle: *const GifskiHandle, 
         Some(g) => g,
         None => return GifskiError::NULL_ARG,
     };
-    let cb = match cb {
-        Some(cb) => cb,
-        None => return GifskiError::NULL_ARG,
-    };
-    let writer = CallbackWriter { cb, user_data };
-    gifski_write_thread_start(g, writer, None).err().unwrap_or(GifskiError::OK)
+    catch_unwind(move || {
+        let cb = match cb {
+            Some(cb) => cb,
+            None => return GifskiError::NULL_ARG,
+        };
+        let writer = CallbackWriter { cb, user_data };
+        gifski_write_thread_start(g, writer, None).err().unwrap_or(GifskiError::OK)
+    })
+    .map_err(print_panic).unwrap_or(GifskiError::THREAD_LOST)
 }
 
 fn gifski_write_thread_start<W: 'static +  Write + Send>(g: &GifskiHandleInternal, file: W, path: Option<PathBuf>) -> Result<(), GifskiError> {
@@ -501,30 +508,34 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
         return GifskiError::NULL_ARG;
     }
     let g = Arc::from_raw(g.cast::<GifskiHandleInternal>());
+    catch_unwind(|| {
+        match g.collector.lock() {
+            // dropping of the collector (if any) completes writing
+            Ok(mut lock) => *lock = None,
+            Err(_) => {
+                eprintln!("warning: collector thread crashed");
+            },
+        };
 
-    match g.collector.lock() {
-        // dropping of the collector (if any) completes writing
-        Ok(mut lock) => *lock = None,
-        Err(_) => {
-            eprintln!("warning: collector thread crashed");
-        },
-    };
+        let thread = match g.write_thread.lock() {
+            Ok(mut writer) => writer.1.take(),
+            Err(_) => return GifskiError::THREAD_LOST,
+        };
 
-    let thread = match g.write_thread.lock() {
-        Ok(mut writer) => writer.1.take(),
-        Err(_) => return GifskiError::THREAD_LOST,
-    };
+        if let Some(thread) = thread {
+            thread.join().map_err(print_panic).unwrap_or(GifskiError::THREAD_LOST)
+        } else {
+            eprintln!("warning: gifski_finish called before any output has been set");
+            GifskiError::OK // this will become INVALID_STATE once sync write support is dropped
+        }
+    })
+    .map_err(print_panic).unwrap_or(GifskiError::THREAD_LOST)
+}
 
-    if let Some(thread) = thread {
-        thread.join().map_err(|e| {
-            let msg = e.downcast_ref::<String>().map(|s| s.as_str())
-            .or_else(|| e.downcast_ref::<&str>().copied()).unwrap_or("unknown panic");
-            eprintln!("writer crashed (this is a bug): {msg}");
-        }).unwrap_or(GifskiError::THREAD_LOST)
-    } else {
-        eprintln!("warning: gifski_finish called before any output has been set");
-        GifskiError::OK // this will become INVALID_STATE once sync write support is dropped
-    }
+fn print_panic(e: Box<dyn std::any::Any + Send>) {
+    let msg = e.downcast_ref::<String>().map(|s| s.as_str())
+        .or_else(|| e.downcast_ref::<&str>().copied()).unwrap_or("unknown panic");
+    eprintln!("writer crashed (this is a bug): {msg}");
 }
 
 #[test]
