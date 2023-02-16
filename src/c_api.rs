@@ -235,28 +235,38 @@ pub unsafe extern "C" fn gifski_add_frame_rgba(handle: *const GifskiHandle, fram
     if pixels.is_null() {
         return GifskiError::NULL_ARG;
     }
-    if width < 1 || height < 1 || width > 0xFFFF || height > 0xFFFF {
+    if width == 0 || height == 0 || width > 0xFFFF || height > 0xFFFF {
         return GifskiError::INVALID_INPUT;
     }
-    let pixels = slice::from_raw_parts(pixels, width as usize * height as usize);
-    add_frame_rgba(handle, frame_number, Img::new(pixels.into(), width as usize, height as usize), presentation_timestamp)
+    let width = width as usize;
+    let height = height as usize;
+    let pixels = slice::from_raw_parts(pixels, width * height);
+    add_frame_rgba(handle, frame_number, Img::new(pixels.into(), width, height), presentation_timestamp)
 }
 
 /// Same as `gifski_add_frame_rgba`, but with bytes per row arg.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_rgba_stride(handle: *const GifskiHandle, frame_number: u32, width: u32, height: u32, bytes_per_row: u32, pixels: *const RGBA8, presentation_timestamp: f64) -> GifskiError {
+    let (pixels, stride) = match pixels_slice(pixels, width, height, bytes_per_row) {
+        Ok(v) => v,
+        Err(err) => return err,
+    };
+    let img = ImgVec::new_stride(pixels.into(), width as _, height as _, stride);
+    add_frame_rgba(handle, frame_number, img, presentation_timestamp)
+}
+
+unsafe fn pixels_slice<'a, T>(pixels: *const T, width: u32, height: u32, bytes_per_row: u32) -> Result<(&'a [T], usize), GifskiError> {
     if pixels.is_null() {
-        return GifskiError::NULL_ARG;
+        return Err(GifskiError::NULL_ARG);
     }
-    let stride = bytes_per_row as usize / mem::size_of_val(&*pixels);
+    let stride = bytes_per_row as usize / mem::size_of::<T>();
     let width = width as usize;
     let height = height as usize;
-    if stride < width || height < 1 {
-        return GifskiError::INVALID_INPUT;
+    if stride < width || width == 0 || height == 0 || width > 0xFFFF || height > 0xFFFF {
+        return Err(GifskiError::INVALID_INPUT);
     }
     let pixels = slice::from_raw_parts(pixels, stride * height + width - stride);
-    let img = ImgVec::new_stride(pixels.into(), width, height, stride);
-    add_frame_rgba(handle, frame_number, img, presentation_timestamp)
+    Ok((pixels, stride))
 }
 
 fn add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> GifskiError {
@@ -281,15 +291,12 @@ fn add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, frame: ImgVec<
 /// `gifski_add_frame_rgba` is preferred over this function.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const ARGB8, presentation_timestamp: f64) -> GifskiError {
-    if pixels.is_null() {
-        return GifskiError::NULL_ARG;
-    }
+    let (pixels, stride) = match pixels_slice(pixels, width, height, bytes_per_row) {
+        Ok(v) => v,
+        Err(err) => return err,
+    };
     let width = width as usize;
-    let stride = bytes_per_row as usize / mem::size_of_val(&*pixels);
-    if stride < width {
-        return GifskiError::INVALID_INPUT;
-    }
-    let pixels = slice::from_raw_parts(pixels, stride * height as usize);
+    let height = height as usize;
     let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|p| RGBA8 {
         r: p.r,
         g: p.g,
@@ -308,16 +315,13 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
 /// `gifski_add_frame_rgba` is preferred over this function.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const RGB8, presentation_timestamp: f64) -> GifskiError {
-    if pixels.is_null() {
-        return GifskiError::NULL_ARG;
-    }
+    let (pixels, stride) = match pixels_slice(pixels, width, height, bytes_per_row) {
+        Ok(v) => v,
+        Err(err) => return err,
+    };
     let width = width as usize;
-    let stride = bytes_per_row as usize / mem::size_of_val(&*pixels);
-    if stride < width {
-        return GifskiError::INVALID_INPUT;
-    }
-    let pixels = slice::from_raw_parts(pixels, stride * height as usize);
-    let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.alpha(255))).collect(), width, height as usize);
+    let height = height as usize;
+    let img = ImgVec::new(pixels.chunks(stride).flat_map(|r| r[0..width].iter().map(|&p| p.alpha(255))).collect(), width, height);
     add_frame_rgba(handle, frame_number, img, presentation_timestamp)
 }
 
