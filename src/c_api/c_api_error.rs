@@ -42,7 +42,8 @@ impl From<GifskiError> for io::Error {
             INTERRUPTED => EK::Interrupted,
             UNEXPECTED_EOF => EK::UnexpectedEof,
             _ => return io::Error::new(EK::Other, g),
-        }.into()
+        }
+        .into()
     }
 }
 

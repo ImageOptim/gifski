@@ -1,4 +1,3 @@
-
 use crate::source::Fps;
 use crate::source::Source;
 use crate::BinResult;
@@ -12,7 +11,10 @@ pub struct Lodecoder {
 
 impl Lodecoder {
     pub fn new(frames: Vec<PathBuf>, params: Fps) -> Self {
-        Self { frames, fps: params.fps }
+        Self {
+            frames,
+            fps: params.fps,
+        }
     }
 }
 

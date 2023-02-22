@@ -1,6 +1,6 @@
-use std::num::TryFromIntError;
-use std::io;
 use quick_error::quick_error;
+use std::io;
+use std::num::TryFromIntError;
 
 quick_error! {
     #[derive(Debug)]

@@ -1,10 +1,13 @@
 //! This is for reading GIFs as an input for re-encoding as another GIF
 
-use std::fs::File;
+use crate::{
+    source::{Fps, Source},
+    BinResult,
+};
 use gif::Decoder;
 use gifski::Collector;
+use std::fs::File;
 use std::path::Path;
-use crate::{source::{Fps, Source}, BinResult};
 
 pub struct GifDecoder {
     speed: f32,
@@ -32,7 +35,9 @@ impl GifDecoder {
 }
 
 impl Source for GifDecoder {
-    fn total_frames(&self) -> Option<u64> { None }
+    fn total_frames(&self) -> Option<u64> {
+        None
+    }
     fn collect(&mut self, c: &mut Collector) -> BinResult<()> {
         let mut idx = 0;
         let mut delay_ts = 0;

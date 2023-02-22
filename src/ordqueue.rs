@@ -10,7 +10,9 @@ pub struct OrdQueue<T> {
 
 impl<T> Clone for OrdQueue<T> {
     fn clone(&self) -> Self {
-        Self { sender: self.sender.clone() }
+        Self {
+            sender: self.sender.clone(),
+        }
     }
 }
 
@@ -22,13 +24,14 @@ pub struct OrdQueueIter<T> {
 
 pub fn new<T>(depth: usize) -> (OrdQueue<T>, OrdQueueIter<T>) {
     let (sender, receiver) = crossbeam_channel::bounded(depth);
-    (OrdQueue {
-        sender,
-    }, OrdQueueIter {
-        receiver,
-        next_index: 0,
-        receive_buffer: BinaryHeap::new()
-    })
+    (
+        OrdQueue { sender },
+        OrdQueueIter {
+            receiver,
+            next_index: 0,
+            receive_buffer: BinaryHeap::new(),
+        },
+    )
 }
 
 impl<T: Send + 'static> OrdQueue<T> {
@@ -47,11 +50,11 @@ impl<T> Iterator for OrdQueueIter<T> {
             match self.receiver.recv() {
                 Ok(item) => {
                     self.receive_buffer.push(item);
-                },
+                }
                 Err(_) => {
                     // Sender dropped (but continue to dump receive_buffer buffer)
                     break;
-                },
+                }
             }
         }
 
@@ -66,12 +69,18 @@ impl<T> Iterator for OrdQueueIter<T> {
 
 struct ReverseTuple<T>(usize, T);
 impl<T> PartialEq for ReverseTuple<T> {
-    fn eq(&self, o: &Self) -> bool { o.0.eq(&self.0) }
+    fn eq(&self, o: &Self) -> bool {
+        o.0.eq(&self.0)
+    }
 }
 impl<T> Eq for ReverseTuple<T> {}
 impl<T> PartialOrd for ReverseTuple<T> {
-    fn partial_cmp(&self, o: &Self) -> Option<Ordering> { o.0.partial_cmp(&self.0) }
+    fn partial_cmp(&self, o: &Self) -> Option<Ordering> {
+        o.0.partial_cmp(&self.0)
+    }
 }
 impl<T> Ord for ReverseTuple<T> {
-    fn cmp(&self, o: &Self) -> Ordering { o.0.cmp(&self.0) }
+    fn cmp(&self, o: &Self) -> Ordering {
+        o.0.cmp(&self.0)
+    }
 }

@@ -1,12 +1,12 @@
 use clap::builder::NonEmptyStringValueParser;
-use std::io::Read;
-use gifski::{Settings, Repeat};
 use clap::value_parser;
+use gifski::{Repeat, Settings};
+use std::io::Read;
 
 #[cfg(feature = "video")]
 mod ffmpeg_source;
-mod png;
 mod gif;
+mod png;
 mod source;
 use crate::source::Source;
 
@@ -14,7 +14,7 @@ use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
-use clap::{Command, Arg, ArgAction};
+use clap::{Arg, ArgAction, Command};
 
 use std::env;
 use std::fmt;
@@ -25,7 +25,8 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "video")]
-const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, or multiple PNG image files";
+const VIDEO_FRAMES_ARG_HELP: &str =
+    "one video file supported by FFmpeg, or multiple PNG image files";
 #[cfg(not(feature = "video"))]
 const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames";
 
@@ -179,7 +180,10 @@ fn bin_main() -> BinResult<()> {
         if settings.quality < 1 {
             return Err("Quality too low".into());
         } else if !quiet {
-            eprintln!("warning: quality {} will give really bad results", settings.quality);
+            eprintln!(
+                "warning: quality {} will give really bad results",
+                settings.quality
+            );
         }
     } else if settings.quality > 100 {
         return Err("Quality 100 is maximum".into());
@@ -191,8 +195,7 @@ fn bin_main() -> BinResult<()> {
 
     if fps > 100.0 || fps <= 0.0 {
         return Err("100 fps is maximum".into());
-    }
-    else if !quiet && fps > 50.0 {
+    } else if !quiet && fps > 50.0 {
         eprintln!("warning: web browsers support max 50 fps");
     }
 
@@ -217,10 +220,12 @@ fn bin_main() -> BinResult<()> {
             return Err("JPEG format is unsuitable for conversion to GIF.\n\n\
                 JPEG's compression artifacts and color space are very problematic for palette-based\n\
                 compression. Please don't use JPEG for making GIF animations. Please re-export\n\
-                your animation using the PNG format.".into())
+                your animation using the PNG format.".into());
         }
         if speed != 1.0 {
-            return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
+            return Err(
+                "Speed is for videos. It doesn't make sense for images. Use fps only".into(),
+            );
         }
         Box::new(png::Lodecoder::new(frames, rate))
     };
@@ -252,22 +257,22 @@ fn bin_main() -> BinResult<()> {
         #[allow(deprecated)]
         writer.set_lossy_quality(lossy_quality);
     }
-    let decode_thread = thread::Builder::new().name("decode".into()).spawn(move || {
-        decoder.collect(&mut collector)
-    })?;
+    let decode_thread = thread::Builder::new()
+        .name("decode".into())
+        .spawn(move || decoder.collect(&mut collector))?;
 
     let mut file_tmp;
     let mut stdio_tmp;
     let out: &mut dyn io::Write = match output_path {
         DestPath::Path(p) => {
-            file_tmp = File::create(p)
-                .map_err(|e| format!("Can't write to {}: {e}", p.display()))?;
+            file_tmp =
+                File::create(p).map_err(|e| format!("Can't write to {}: {e}", p.display()))?;
             &mut file_tmp
-        },
+        }
         DestPath::Stdout => {
             stdio_tmp = io::stdout().lock();
             &mut stdio_tmp
-        },
+        }
     };
     writer.write(io::BufWriter::new(out), progress)?;
     decode_thread.join().map_err(|_| "thread died?")??;
@@ -278,7 +283,10 @@ fn bin_main() -> BinResult<()> {
 
 #[allow(clippy::upper_case_acronyms)]
 enum FileType {
-    PNG, GIF, JPEG, Other,
+    PNG,
+    GIF,
+    JPEG,
+    Other,
 }
 
 fn file_type(path: &Path) -> BinResult<FileType> {
@@ -305,11 +313,14 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
             if path.to_str().map_or(false, |p| p.contains('*')) {
                 msg += "\nThe path contains a literal \"*\" character. Either no files matched the pattern, or the pattern was in quotes.";
             } else if path.extension() == Some("gif".as_ref()) {
-                msg = format!("Did you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
+                msg = format!(
+                    "Did you mean to use -o \"{}\" to specify it as the output file instead?",
+                    path.display()
+                );
             } else if path.is_relative() {
                 msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
             }
-            return Err(msg.into())
+            return Err(msg.into());
         }
     }
     Ok(())
@@ -336,16 +347,27 @@ impl fmt::Display for DestPath<'_> {
         match self {
             Self::Path(orig_path) => {
                 let abs_path = dunce::canonicalize(orig_path);
-                abs_path.as_ref().map(|p| p.as_path()).unwrap_or(orig_path).display().fmt(f)
-            },
+                abs_path
+                    .as_ref()
+                    .map(|p| p.as_path())
+                    .unwrap_or(orig_path)
+                    .display()
+                    .fmt(f)
+            }
             Self::Stdout => f.write_str("stdout"),
         }
     }
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(path: &Path, fps: source::Fps, settings: Settings) -> BinResult<Box<dyn Source + Send>> {
-    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps, settings)?))
+fn get_video_decoder(
+    path: &Path,
+    fps: source::Fps,
+    settings: Settings,
+) -> BinResult<Box<dyn Source + Send>> {
+    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(
+        path, fps, settings,
+    )?))
 }
 
 #[cfg(not(feature = "video"))]
@@ -360,5 +382,6 @@ cargo install gifski --features=video
 
 Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable. Instructions on https://gif.ski
-".into())
+"
+    .into())
 }

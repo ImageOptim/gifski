@@ -1,7 +1,7 @@
-use crate::SettingsExt;
 use crate::error::CatResult;
 use crate::GIFFrame;
 use crate::Settings;
+use crate::SettingsExt;
 use rgb::ComponentBytes;
 use std::io::Write;
 
@@ -21,7 +21,14 @@ impl<W: Write> RustEncoder<W> {
 
 impl<W: Write> RustEncoder<W> {
     pub fn compress_frame(f: GIFFrame, settings: &SettingsExt) -> CatResult<gif::Frame<'static>> {
-        let GIFFrame {left, top, pal, image, dispose, transparent_index} = f;
+        let GIFFrame {
+            left,
+            top,
+            pal,
+            image,
+            dispose,
+            transparent_index,
+        } = f;
 
         let (buffer, width, height) = image.into_contiguous_buf();
 
@@ -65,7 +72,10 @@ impl<W: Write> RustEncoder<W> {
 
         let pal = frame.palette.as_ref().ok_or(Error::Gifsicle)?;
 
-        let min_code_size = (pal.len() as u32 / 3).max(2).next_power_of_two().trailing_zeros();
+        let min_code_size = (pal.len() as u32 / 3)
+            .max(2)
+            .next_power_of_two()
+            .trailing_zeros();
 
         unsafe {
             let g = Gif_NewImage().as_mut().ok_or(crate::Error::Gifsicle)?;
@@ -90,13 +100,17 @@ impl<W: Write> RustEncoder<W> {
                 return Err(Error::Gifsicle);
             }
             for c in pal.chunks_exact(3) {
-                Gif_AddColor(g.local, &mut Gif_Color {
-                    gfc_red: c[0],
-                    gfc_green: c[1],
-                    gfc_blue: c[2],
-                    haspixel: 0, // dunno?
-                    pixel: 0,
-                }, -1);
+                Gif_AddColor(
+                    g.local,
+                    &mut Gif_Color {
+                        gfc_red: c[0],
+                        gfc_green: c[1],
+                        gfc_blue: c[2],
+                        haspixel: 0, // dunno?
+                        pixel: 0,
+                    },
+                    -1,
+                );
             }
             let gci = Gif_CompressInfo {
                 flags: 0,
@@ -112,9 +126,15 @@ impl<W: Write> RustEncoder<W> {
                 gifsicle::Gif_WriterCleanup(grr);
             });
 
-            let mut res = Gif_SetUncompressedImage(&mut **g, frame.buffer.as_ptr() as *mut u8, None, 0);
+            let mut res =
+                Gif_SetUncompressedImage(&mut **g, frame.buffer.as_ptr() as *mut u8, None, 0);
             if res != 0 {
-                res = gifsicle::Gif_WriteCompressedData(ptr::null_mut(), *g, min_code_size as _, &mut **grr);
+                res = gifsicle::Gif_WriteCompressedData(
+                    ptr::null_mut(),
+                    *g,
+                    min_code_size as _,
+                    &mut **grr,
+                );
             }
             drop(g);
             if res == 0 {
@@ -125,7 +145,14 @@ impl<W: Write> RustEncoder<W> {
         Ok(())
     }
 
-    pub fn write_frame(&mut self, mut frame: gif::Frame<'static>, delay: u16, screen_width: u16, screen_height: u16, settings: &Settings) -> CatResult<()> {
+    pub fn write_frame(
+        &mut self,
+        mut frame: gif::Frame<'static>,
+        delay: u16,
+        screen_width: u16,
+        screen_height: u16,
+        settings: &Settings,
+    ) -> CatResult<()> {
         frame.delay = delay; // the delay wasn't known
 
         let writer = &mut self.writer;
@@ -136,7 +163,7 @@ impl<W: Write> RustEncoder<W> {
                 enc.write_extension(gif::ExtensionData::Repetitions(settings.repeat))?;
                 enc.write_raw_extension(gif::Extension::Comment.into(), &[b"gif.ski"])?;
                 self.gif_enc.get_or_insert(enc)
-            },
+            }
             Some(ref mut enc) => enc,
         };
 
