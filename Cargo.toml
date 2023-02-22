@@ -15,15 +15,6 @@ autobins = false
 edition = "2021"
 rust-version = "1.63"
 
-[[bin]]
-doctest = false
-name = "gifski"
-required-features = ["binary"]
-
-[[test]]
-name = "tests"
-required-features = ["png"]
-
 [dependencies]
 gifsicle = { version = "1.93.0", optional = true }
 clap = { version = "4.1.1", features = ["cargo"], optional = true }
@@ -46,24 +37,7 @@ num-traits = { version = "0.2.15", features = ["i128", "std"] }
 crossbeam-utils = "0.8.12"
 scopeguard = "1.1.0"
 
-[dependencies.ffmpeg]
-package = "ffmpeg-next"
-version = "4.4.0"
-optional = true
-default-features = false
-features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
-
-[features]
-# cargo build will skip the binaries with missing required-features
-# so all CLI dependencies have to be enabled by default
-default = ["gifsicle", "binary"]
-binary = ["dep:clap", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
-png = ["lodepng"]
-openmp = [] # deprecated, obsolete
-openmp-static = [] # deprecated, obsolete
-video = ["ffmpeg"]
-video-static = ["video", "ffmpeg/build"]
-video-prebuilt-static = ["video", "ffmpeg/static"]
+wasm-bindgen = "0.2"
 
 [lib]
 path = "src/lib.rs"
@@ -78,14 +52,13 @@ opt-level = 2
 debug = false
 
 [profile.release]
-panic = "abort"
-lto = true
 debug = false
-opt-level = 3
-strip = true
+lto = true
+codegen-units = 1
+opt-level = 's'     # Optimize for size
+panic = 'abort'     # About unwinding code
+strip = "debuginfo"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
-[patch.crates-io]
-ffmpeg-sys-next = { rev = "78458039d5fac99354f9cb078869f3be3f3af5fb", git = "https://github.com/kornelski/rust-ffmpeg-sys-1"}

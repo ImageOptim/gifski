@@ -26,20 +26,12 @@ mod error;
 pub use crate::error::*;
 mod ordqueue;
 use crate::ordqueue::{OrdQueue, OrdQueueIter};
-pub mod progress;
-use crate::progress::*;
-pub mod c_api;
 mod denoise;
 use crate::denoise::*;
 mod encoderust;
 
-// #[cfg(feature = "gifsicle")]
-// mod encodegifsicle;
-
-mod minipool;
-
 use crossbeam_channel::{Receiver, Sender};
-use std::io::prelude::*;
+use std::io::{prelude::*, Cursor};
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering::Relaxed;
@@ -527,88 +519,43 @@ impl Writer {
         write_queue: Receiver<FrameMessage>,
         writer: &mut dyn Write,
         settings: &SettingsExt,
-        reporter: &mut dyn ProgressReporter,
     ) -> CatResult<()> {
         let (send, recv) = ordqueue::new(2);
-        minipool::new_scope(
-            (if settings.s.fast || settings.gifsicle_loss() > 0 {
-                3
-            } else {
-                1
-            })
-            .try_into()
-            .unwrap(),
-            "lzw",
-            move || {
-                let mut pts_in_delay_units = 0_u64;
+        let mut pts_in_delay_units = 0_u64;
 
-                let mut enc = RustEncoder::new(writer);
+        let mut enc = RustEncoder::new(writer);
 
-                let mut n_done = 0;
-                for tmp in recv {
-                    let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (
-                        f64,
-                        _,
-                        _,
-                        _,
-                        _,
-                    ) = tmp;
-                    let delay = ((end_pts * 100_f64).round() as u64)
-                        .saturating_sub(pts_in_delay_units)
-                        .min(30000) as u16;
-                    pts_in_delay_units += u64::from(delay);
+        let mut n_done = 0;
+        for tmp in recv {
+            let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (
+                f64,
+                _,
+                _,
+                _,
+                _,
+            ) = tmp;
+            let delay = ((end_pts * 100_f64).round() as u64)
+                .saturating_sub(pts_in_delay_units)
+                .min(30000) as u16;
+            pts_in_delay_units += u64::from(delay);
 
-                    debug_assert_ne!(0, delay);
+            debug_assert_ne!(0, delay);
 
-                    // skip frames with bad pts
-                    if delay != 0 {
-                        enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
-                    }
+            // skip frames with bad pts
+            if delay != 0 {
+                enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
+            }
 
-                    // loop to report skipped frames too
-                    while n_done < ordinal_frame_number {
-                        n_done += 1;
-                        if !reporter.increase() {
-                            return Err(Error::Aborted);
-                        }
-                    }
-                }
-                if n_done == 0 {
-                    Err(Error::NoFrames)
-                } else {
-                    Ok(())
-                }
-            },
-            move |abort| {
-                for FrameMessage {
-                    frame,
-                    frame_index,
-                    ordinal_frame_number,
-                    end_pts,
-                    screen_width,
-                    screen_height,
-                } in write_queue
-                {
-                    if abort.load(Relaxed) {
-                        return Err(Error::Aborted);
-                    }
-
-                    let frame =
-                        RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, settings)?;
-                    send.push(
-                        frame_index,
-                        (
-                            end_pts,
-                            ordinal_frame_number,
-                            frame,
-                            screen_width,
-                            screen_height,
-                        ),
-                    )?;
-                }
-                Ok(())
-            },
-        )
+            // loop to report skipped frames too
+            while n_done < ordinal_frame_number {
+                n_done += 1;
+            }
+        }
+        if n_done == 0 {
+            Err(Error::NoFrames)
+        } else {
+            Ok(())
+        }
     }
 
     /// Start writing frames. This function will not return until `Collector` is dropped.
@@ -617,19 +564,11 @@ impl Writer {
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
     #[allow(unused_mut)]
-    pub fn write<W: Write>(
-        self,
-        mut writer: W,
-        reporter: &mut dyn ProgressReporter,
-    ) -> CatResult<()> {
-        self.write_inner(&mut writer, reporter)
+    pub fn write<W: Write>(self, mut writer: W) -> CatResult<()> {
+        self.write_inner(&mut writer)
     }
 
-    fn write_inner(
-        mut self,
-        writer: &mut dyn Write,
-        reporter: &mut dyn ProgressReporter,
-    ) -> CatResult<()> {
+    fn write_inner(mut self, writer: &mut dyn Write) -> CatResult<()> {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
         let settings_ext = self.settings;
@@ -649,11 +588,13 @@ impl Writer {
         let remap_thread = thread::Builder::new()
             .name("remap".into())
             .spawn(move || Self::remap_frames(remap_queue_recv, write_queue))?;
-        let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext, reporter);
+
+        let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext);
         let res1 = resize_thread.join().map_err(handle_join_error)?;
         let res2 = diff_thread.join().map_err(handle_join_error)?;
         let res3 = quant_thread.join().map_err(handle_join_error)?;
         let res4 = remap_thread.join().map_err(handle_join_error)?;
+
         combine_res(
             combine_res(combine_res(res0, res1), combine_res(res2, res3)),
             res4,
@@ -666,49 +607,33 @@ impl Writer {
         diff_queue: OrdQueue<InputFrame>,
         settings: &SettingsExt,
     ) -> CatResult<()> {
-        minipool::new_scope(
-            settings.max_threads.min(
-                if settings.s.fast || settings.extra_effort {
-                    6
-                } else {
-                    4
+        for frame in inputs {
+            let image = match frame.frame {
+                FrameSource::Pixels(image) => image,
+                FrameSource::Path(path) => {
+                    // let image = lodepng::decode32_file(&path).map_err(|err| {
+                    //     Error::PNG(format!("Can't load {}: {err}", path.display()))
+                    // })?;
+                    // Img::new(image.buffer, image.width, image.height)
+                    Img::new(vec![], 0, 0)
                 }
-                .try_into()?,
-            ),
-            "resize",
-            move || Ok(()),
-            move |abort| {
-                for frame in inputs {
-                    if abort.load(Relaxed) {
-                        return Err(Error::Aborted);
-                    }
-                    let image = match frame.frame {
-                        FrameSource::Pixels(image) => image,
-                        FrameSource::Path(path) => {
-                            let image = lodepng::decode32_file(&path).map_err(|err| {
-                                Error::PNG(format!("Can't load {}: {err}", path.display()))
-                            })?;
-                            Img::new(image.buffer, image.width, image.height)
-                        }
-                    };
-                    let resized = resized_binary_alpha(image, settings.s.width, settings.s.height)?;
-                    let frame_blurred = if settings.extra_effort {
-                        smart_blur(resized.as_ref())
-                    } else {
-                        less_smart_blur(resized.as_ref())
-                    };
-                    diff_queue.push(
-                        frame.frame_index,
-                        InputFrame {
-                            frame: resized,
-                            frame_blurred,
-                            presentation_timestamp: frame.presentation_timestamp,
-                        },
-                    )?;
-                }
-                Ok(())
-            },
-        )
+            };
+            let resized = resized_binary_alpha(image, settings.s.width, settings.s.height)?;
+            let frame_blurred = if settings.extra_effort {
+                smart_blur(resized.as_ref())
+            } else {
+                less_smart_blur(resized.as_ref())
+            };
+            diff_queue.push(
+                frame.frame_index,
+                InputFrame {
+                    frame: resized,
+                    frame_blurred,
+                    presentation_timestamp: frame.presentation_timestamp,
+                },
+            )?;
+        }
+        Ok(())
     }
 
     /// Find differences between frames, and compute importance maps
@@ -816,133 +741,128 @@ impl Writer {
         remap_queue: OrdQueue<RemapMessage>,
         settings: &SettingsExt,
     ) -> CatResult<()> {
-        minipool::new_channel(
-            settings.max_threads.min(4.try_into()?),
-            "quant",
-            move |to_remap| {
-                let mut inputs = inputs.into_iter().peekable();
+        let mut frame_buffer = Vec::new();
+        let mut inputs = inputs.into_iter().peekable();
 
-                let DiffMessage {
-                    image: first_frame, ..
-                } = inputs.peek().ok_or(Error::NoFrames)?;
-                let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
+        let DiffMessage {
+            image: first_frame, ..
+        } = inputs.peek().ok_or(Error::NoFrames)?;
+        let first_frame_has_transparency = first_frame.pixels().any(|px| px.a < 128);
 
-                let mut prev_frame_keeps = false;
-                let mut frame_index = 0;
-                let mut importance_map = None;
-                while let Some(DiffMessage {
-                    mut image,
-                    pts,
-                    frame_duration,
-                    ordinal_frame_number,
-                    importance_map: new_importance_map,
-                }) = inputs.next()
+        let mut prev_frame_keeps = false;
+        let mut frame_index = 0;
+        let mut importance_map = None;
+        while let Some(DiffMessage {
+            mut image,
+            pts,
+            frame_duration,
+            ordinal_frame_number,
+            importance_map: new_importance_map,
+        }) = inputs.next()
+        {
+            if importance_map.is_none() {
+                importance_map = Some(new_importance_map);
+            }
+
+            let dispose = if let Some(DiffMessage {
+                image: next_image, ..
+            }) = inputs.peek()
+            {
+                // Skip identical frames
+                if next_image.as_ref() == image.as_ref() {
+                    // this keeps importance_map of the previous frame in the identical-frame series
+                    // (important, because subsequent identical frames have all-zero importance_map and would be dropped too)
+                    continue;
+                }
+
+                // If the next frame becomes transparent, this frame has to clear to bg for it
+                if next_image
+                    .pixels()
+                    .zip(image.pixels())
+                    .any(|(next, curr)| next.a < curr.a)
                 {
-                    if importance_map.is_none() {
-                        importance_map = Some(new_importance_map);
-                    }
+                    gif::DisposalMethod::Background
+                } else {
+                    gif::DisposalMethod::Keep
+                }
+            } else if first_frame_has_transparency {
+                // Last frame should reset to background to avoid breaking transparent looped anims
+                gif::DisposalMethod::Background
+            } else {
+                // macOS preview gets Background wrong
+                gif::DisposalMethod::Keep
+            };
 
-                    let dispose = if let Some(DiffMessage {
-                        image: next_image, ..
-                    }) = inputs.peek()
+            let importance_map = importance_map.take().ok_or(Error::ThreadSend)?; // always set at the beginning
+
+            if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
+                if prev_frame_keeps {
+                    // if denoiser says the background didn't change, then believe it
+                    // (except higher quality settings, which try to improve it every time)
+                    let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
+                    if settings.s.fast
+                        || (settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood)
                     {
-                        // Skip identical frames
-                        if next_image.as_ref() == image.as_ref() {
-                            // this keeps importance_map of the previous frame in the identical-frame series
-                            // (important, because subsequent identical frames have all-zero importance_map and would be dropped too)
-                            continue;
-                        }
-
-                        // If the next frame becomes transparent, this frame has to clear to bg for it
-                        if next_image
-                            .pixels()
-                            .zip(image.pixels())
-                            .any(|(next, curr)| next.a < curr.a)
-                        {
-                            gif::DisposalMethod::Background
-                        } else {
-                            gif::DisposalMethod::Keep
-                        }
-                    } else if first_frame_has_transparency {
-                        // Last frame should reset to background to avoid breaking transparent looped anims
-                        gif::DisposalMethod::Background
-                    } else {
-                        // macOS preview gets Background wrong
-                        gif::DisposalMethod::Keep
-                    };
-
-                    let importance_map = importance_map.take().ok_or(Error::ThreadSend)?; // always set at the beginning
-
-                    if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
-                        if prev_frame_keeps {
-                            // if denoiser says the background didn't change, then believe it
-                            // (except higher quality settings, which try to improve it every time)
-                            let bg_keep_likelihood =
-                                u32::from(settings.s.quality.saturating_sub(80) / 4);
-                            if settings.s.fast
-                                || (settings.s.quality < 100
-                                    && (frame_index % 5) >= bg_keep_likelihood)
-                            {
-                                image
-                                    .pixels_mut()
-                                    .zip(&importance_map)
-                                    .filter(|&(_, &m)| m == 0)
-                                    .for_each(|(px, _)| *px = RGBA8::new(0, 0, 0, 0));
-                            }
-                        }
-
-                        let end_pts =
-                            if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {
-                                next_pts
-                            } else {
-                                pts + frame_duration
-                            };
-                        debug_assert!(end_pts > 0.);
-
-                        to_remap.send((
-                            end_pts,
-                            image,
-                            importance_map,
-                            ordinal_frame_number,
-                            frame_index,
-                            dispose,
-                            first_frame_has_transparency,
-                            prev_frame_keeps,
-                        ))?;
-
-                        frame_index += 1;
-                        prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
+                        image
+                            .pixels_mut()
+                            .zip(&importance_map)
+                            .filter(|&(_, &m)| m == 0)
+                            .for_each(|(px, _)| *px = RGBA8::new(0, 0, 0, 0));
                     }
                 }
-                Ok(())
-            },
-            move |(
-                end_pts,
-                image,
-                mut importance_map,
-                ordinal_frame_number,
-                frame_index,
-                dispose,
-                first_frame_has_transparency,
-                prev_frame_keeps,
-            )| {
-                let needs_transparency =
-                    frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
-                let (liq, remap, liq_image, out_buf) = Self::quantize(
-                    image,
-                    &importance_map,
-                    frame_index == 0,
-                    needs_transparency,
-                    prev_frame_keeps,
-                    settings,
-                )?;
-                let max_loss = settings.gifsicle_loss();
-                for imp in &mut importance_map {
-                    // encoding assumes rgba background looks like encoded background, which is not true for lossy
-                    *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
-                }
 
-                remap_queue.push(
+                let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {
+                    next_pts
+                } else {
+                    pts + frame_duration
+                };
+                debug_assert!(end_pts > 0.);
+
+                frame_buffer.push((
+                    end_pts,
+                    image,
+                    importance_map,
+                    ordinal_frame_number,
+                    frame_index,
+                    dispose,
+                    first_frame_has_transparency,
+                    prev_frame_keeps,
+                ));
+
+                frame_index += 1;
+                prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
+            }
+        }
+
+        for (
+            end_pts,
+            image,
+            mut importance_map,
+            ordinal_frame_number,
+            frame_index,
+            dispose,
+            first_frame_has_transparency,
+            prev_frame_keeps,
+        ) in frame_buffer
+        {
+            let needs_transparency =
+                frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
+            let (liq, remap, liq_image, out_buf) = Self::quantize(
+                image,
+                &importance_map,
+                frame_index == 0,
+                needs_transparency,
+                prev_frame_keeps,
+                settings,
+            )?;
+            let max_loss = settings.gifsicle_loss();
+            for imp in &mut importance_map {
+                // encoding assumes rgba background looks like encoded background, which is not true for lossy
+                *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
+            }
+
+            remap_queue
+                .push(
                     frame_index as usize,
                     RemapMessage {
                         ordinal_frame_number,
@@ -954,8 +874,10 @@ impl Writer {
                         out_buf,
                     },
                 )
-            },
-        )
+                .expect("remap_queue full");
+        }
+
+        Ok(())
     }
 
     fn remap_frames(
@@ -1189,4 +1111,62 @@ fn handle_join_error(err: Box<dyn std::any::Any + Send>) -> Error {
         .unwrap_or("unknown panic");
     eprintln!("thread crashed (this is a bug): {msg}");
     Error::ThreadSend
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
+pub fn encode(
+    frames: &[u8],
+    num_of_frames: usize,
+    width: u32,
+    height: u32,
+    fps: u8,
+    quality: Option<u8>,
+    repeat: Option<i32>,
+    resize_width: Option<u32>,
+    resize_height: Option<u32>,
+) -> Vec<u8> {
+    #[cfg(feature = "debug")]
+    console_error_panic_hook::set_once();
+
+    let mut buffer = Cursor::new(Vec::new());
+    let _repeat = repeat.unwrap_or(-1);
+
+    let settings = Settings {
+        width: resize_width,
+        height: resize_height,
+        quality: quality.unwrap_or(100),
+        fast: false, // TODO: Do we want to expose this? Does it have much of an impact?
+        repeat: if _repeat >= 0 {
+            Repeat::Finite(_repeat as u16)
+        } else {
+            Repeat::Infinite
+        },
+    };
+
+    if num_of_frames == 1 {
+        panic!("Only a single image file was given as an input. This is not enough to make an animation.");
+    }
+
+    let frame_size = width * height * 4;
+    if num_of_frames != frames.len() / frame_size as usize {
+        panic!("Expected total of frames do not match the number of frames provided. Are all frames the same height and width?");
+    }
+
+    let (mut collector, writer) = new(settings).unwrap();
+
+    for (index, frame) in frames.chunks_exact(frame_size as usize).enumerate() {
+        let image = ImgVec::new(frame.as_rgba().into(), width as usize, height as usize);
+        collector
+            .add_frame_rgba(index, image, index as f64 / fps as f64)
+            .unwrap();
+    }
+
+    drop(collector);
+
+    match writer.write(&mut buffer) {
+        Ok(_) => (),
+        Err(error) => panic!("Problem writing the gif: {:?}", error),
+    }
+
+    return buffer.into_inner();
 }
