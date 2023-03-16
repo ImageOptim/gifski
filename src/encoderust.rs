@@ -65,7 +65,7 @@ impl<W: Write> RustEncoder<W> {
 
         let pal = frame.palette.as_ref().ok_or(Error::Gifsicle)?;
 
-        let min_code_size = (pal.len() as u32 / 3).max(2).next_power_of_two().trailing_zeros();
+        let min_code_size = (pal.len() as u32 / 3).max(3).next_power_of_two().trailing_zeros();
 
         unsafe {
             let g = Gif_NewImage().as_mut().ok_or(crate::Error::Gifsicle)?;
