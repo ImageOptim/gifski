@@ -18,6 +18,7 @@
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 
 use encoderust::RustEncoder;
+use gif::DisposalMethod;
 use imagequant::{Image, QuantizationResult, Attributes};
 use imgref::*;
 use rgb::*;
@@ -149,7 +150,7 @@ struct GIFFrame {
     top: u16,
     image: ImgVec<u8>,
     pal: Vec<RGBA8>,
-    dispose: gif::DisposalMethod,
+    dispose: DisposalMethod,
     transparent_index: Option<u8>,
 }
 
@@ -167,7 +168,7 @@ struct RemapMessage {
     /// 1..
     ordinal_frame_number: usize,
     end_pts: f64,
-    dispose: gif::DisposalMethod,
+    dispose: DisposalMethod,
     liq: Attributes,
     remap: QuantizationResult,
     liq_image: Image<'static>,
@@ -661,16 +662,16 @@ impl Writer {
 
                 // If the next frame becomes transparent, this frame has to clear to bg for it
                 if next_image.pixels().zip(image.pixels()).any(|(next, curr)| next.a < curr.a) {
-                    gif::DisposalMethod::Background
+                    DisposalMethod::Background
                 } else {
-                    gif::DisposalMethod::Keep
+                    DisposalMethod::Keep
                 }
             } else if first_frame_has_transparency {
                 // Last frame should reset to background to avoid breaking transparent looped anims
-                gif::DisposalMethod::Background
+                DisposalMethod::Background
             } else {
                 // macOS preview gets Background wrong
-                gif::DisposalMethod::Keep
+                DisposalMethod::Keep
             };
 
             let importance_map = importance_map.take().ok_or(Error::ThreadSend)?; // always set at the beginning
@@ -695,7 +696,7 @@ impl Writer {
                 to_remap.send((end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps))?;
 
                 frame_index += 1;
-                prev_frame_keeps = dispose == gif::DisposalMethod::Keep;
+                prev_frame_keeps = dispose == DisposalMethod::Keep;
             }
         }
         Ok(())
@@ -739,7 +740,7 @@ impl Writer {
 
             let next_frame = inputs.peek();
             let (left, top, image8) = if frame_index != 0 && next_frame.is_some() {
-                match trim_image(image8, &image8_pal, transparent_index, screen_after_dispose.pixels()) {
+                match trim_image(image8, &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
                     None => continue, // no pixels need to be changed after dispose
                 }
@@ -807,15 +808,27 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
+fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
     let mut image_trimmed = image8.as_ref();
+
+    let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
+        if Some(px) == transparent_index {
+            if dispose == DisposalMethod::Keep {
+                // if dispose == keep, then transparent pixels do nothing, so they can be cropped out
+                true
+            } else {
+                // if disposing to background, then transparent pixels paint transparency, so bg has to actually be transparent to match
+                bg.a == 0
+            }
+        } else {
+            image8_pal.get(px as usize).copied().unwrap_or_default() == bg
+        }
+    };
 
     let bottom = image_trimmed.rows().zip(screen.rows()).rev()
         .take_while(|(img_row, screen_row)| {
             img_row.iter().copied().zip(screen_row.iter().copied())
-                .all(|(px, bg)| {
-                    Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&bg)
-                })
+                .all(|(px, bg)| is_matching_pixel(px, bg))
         })
         .count();
 
@@ -830,9 +843,7 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
     let top = image_trimmed.rows().zip(screen.rows())
         .take_while(|(img_row, screen_row)| {
             img_row.iter().copied().zip(screen_row.iter().copied())
-                .all(|(px, bg)| {
-                    Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&bg)
-                })
+                .all(|(px, bg)| is_matching_pixel(px, bg))
         })
         .count();
 
@@ -845,7 +856,7 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
         .take_while(|&x| {
             (0..image_trimmed.height()).all(|y| {
                 let px = image_trimmed[(x, y)];
-                Some(px) == transparent_index || image8_pal.get(px as usize) == Some(&screen[(x, y)])
+                is_matching_pixel(px, screen[(x, y)])
             })
         }).count();
     if left > 0 {
