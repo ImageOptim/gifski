@@ -303,11 +303,12 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
         if !path.exists() {
             let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
             if path.to_str().map_or(false, |p| p.contains('*')) {
-                msg += "\nThe path contains a literal \"*\" character. Either no files matched the pattern, or the pattern was in quotes.";
+                msg += "\nThe \"*\" character was in quotes, which disabled pattern matching. The file with an actual literal asterisk in its name obviously doesn't exist.\nTo search for all files matching a pattern, use * without quotes.";
             } else if path.extension() == Some("gif".as_ref()) {
                 msg = format!("Did you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
             } else if path.is_relative() {
-                msg += &format!(" (searched in \"{}\")", env::current_dir()?.display());
+                use std::fmt::Write;
+                write!(&mut msg, " (searched in \"{}\")", env::current_dir()?.display())?;
             }
             return Err(msg.into())
         }
