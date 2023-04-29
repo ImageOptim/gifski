@@ -48,7 +48,7 @@ scopeguard = "1.1.0"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
-version = "4.4.0"
+version = ">= 4.4.0, < 7"
 optional = true
 default-features = false
 features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
