@@ -1,5 +1,6 @@
 use clap::builder::NonEmptyStringValueParser;
 use std::io::Read;
+use std::io::Stdout;
 use gifski::{Settings, Repeat};
 use clap::value_parser;
 
@@ -10,7 +11,7 @@ mod gif;
 mod source;
 use crate::source::Source;
 
-use gifski::progress::{NoProgress, ProgressBar, ProgressReporter};
+use gifski::progress::{NoProgress, ProgressReporter};
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -231,11 +232,6 @@ fn bin_main() -> BinResult<()> {
         &mut nopb
     } else {
         pb = ProgressBar::new(decoder.total_frames().unwrap_or(100));
-        pb.show_speed = false;
-        pb.show_percent = false;
-        pb.format(" #_. ");
-        pb.message("Frame ");
-        pb.set_max_refresh_rate(Some(Duration::from_millis(250)));
         &mut pb
     };
 
@@ -362,4 +358,28 @@ cargo install gifski --features=video
 Alternatively, use ffmpeg command to export PNG frames, and then specify
 the PNG files as input for this executable. Instructions on https://gif.ski
 ".into())
+}
+
+struct ProgressBar(pbr::ProgressBar<Stdout>);
+impl ProgressBar {
+    fn new(total: u64) -> Self {
+        let mut pb = pbr::ProgressBar::new(total);
+        pb.show_speed = false;
+        pb.show_percent = false;
+        pb.format(" #_. ");
+        pb.message("Frame ");
+        pb.set_max_refresh_rate(Some(Duration::from_millis(250)));
+        Self(pb)
+    }
+}
+
+impl ProgressReporter for ProgressBar {
+    fn increase(&mut self) -> bool {
+        self.0.inc();
+        true
+    }
+
+    fn done(&mut self, msg: &str) {
+        self.0.finish_print(msg);
+    }
 }

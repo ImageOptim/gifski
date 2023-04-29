@@ -58,7 +58,7 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 # so all CLI dependencies have to be enabled by default
 default = ["gifsicle", "binary"]
 binary = ["dep:clap", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
-png = ["lodepng"]
+png = ["dep:lodepng"]
 openmp = [] # deprecated, obsolete
 openmp-static = [] # deprecated, obsolete
 video = ["ffmpeg"]
