@@ -650,7 +650,7 @@ impl Writer {
         let mut prev_frame_keeps = false;
         let mut frame_index = 0;
         let mut importance_map = None;
-        while let Some(DiffMessage { mut image, pts, frame_duration, ordinal_frame_number, importance_map: new_importance_map }) = inputs.next() {
+        while let Some(DiffMessage { image, pts, frame_duration, ordinal_frame_number, importance_map: new_importance_map }) = inputs.next() {
 
             if importance_map.is_none() {
                 importance_map = Some(new_importance_map);
@@ -681,15 +681,6 @@ impl Writer {
             let importance_map = importance_map.take().ok_or(Error::ThreadSend)?; // always set at the beginning
 
             if !prev_frame_keeps || importance_map.iter().any(|&px| px > 0) {
-                if prev_frame_keeps {
-                    // if denoiser says the background didn't change, then believe it
-                    // (except higher quality settings, which try to improve it every time)
-                    let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
-                    if settings.s.fast || (settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood) {
-                        image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
-                    }
-                }
-
                 let end_pts = if let Some(&DiffMessage { pts: next_pts, .. }) = inputs.peek() {
                     next_pts
                 } else {
@@ -704,14 +695,18 @@ impl Writer {
             }
         }
         Ok(())
-        }, move |(end_pts, image, mut importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps)| {
+        }, move |(end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps)| {
+            if prev_frame_keeps {
+                // if denoiser says the background didn't change, then believe it
+                // (except higher quality settings, which try to improve it every time)
+                let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
+                if settings.s.fast || (settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood) {
+                    image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
+                }
+            }
+
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
             let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings)?;
-            let max_loss = settings.gifsicle_loss();
-            for imp in &mut importance_map {
-                // encoding assumes rgba background looks like encoded background, which is not true for lossy
-                *imp = ((256 - u32::from(*imp)) * max_loss / 256).min(255) as u8;
-            }
 
             remap_queue.push(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
