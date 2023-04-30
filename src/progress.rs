@@ -12,6 +12,9 @@ pub trait ProgressReporter: Send {
     /// This method may return `false` to abort processing.
     fn increase(&mut self) -> bool;
 
+    /// File size so far
+    fn written_bytes(&mut self, _current_file_size_in_bytes: u64) {}
+
     /// Not used :(
     /// Writing is done when `Writer::write()` call returns
     fn done(&mut self, _msg: &str) {}

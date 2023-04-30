@@ -40,9 +40,11 @@ mod encoderust;
 mod minipool;
 
 use crossbeam_channel::{Receiver, Sender};
+use std::cell::Cell;
 use std::io::prelude::*;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::thread;
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -455,7 +457,8 @@ impl Writer {
         minipool::new_scope((if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
             let mut pts_in_delay_units = 0_u64;
 
-            let mut enc = RustEncoder::new(writer);
+            let written = Rc::new(Cell::new(0));
+            let mut enc = RustEncoder::new(writer, written.clone());
 
             let mut n_done = 0;
             for tmp in recv {
@@ -479,6 +482,7 @@ impl Writer {
                         return Err(Error::Aborted);
                     }
                 }
+                reporter.written_bytes(written.get());
             }
             if n_done == 0 {
                 Err(Error::NoFrames)
