@@ -318,7 +318,7 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
         g: p.g,
         b: p.b,
         a: p.a,
-    })).collect(), width, height as usize);
+    })).collect(), width, height);
     add_frame_rgba(handle, frame_number, img, presentation_timestamp)
 }
 
@@ -535,7 +535,7 @@ unsafe fn borrow<'a>(handle: *const GifskiHandle) -> Option<&'a GifskiHandleInte
 }
 
 /// The last step:
-///  - stops accepting any more frames (gifski_add_frame_* calls are blocked)
+///  - stops accepting any more frames (`gifski_add_frame_*` calls are blocked)
 ///  - blocks and waits until all already-added frames have finished writing
 ///
 /// Returns final status of write operations. Remember to check the return value!
@@ -707,12 +707,12 @@ fn test_error_callback() {
         0
     }
     unsafe extern "C" fn errcb(msg: *const c_char, user_data: *mut c_void) {
-        let callback_msg = user_data as *mut Option<String>;
+        let callback_msg = user_data.cast::<Option<String>>();
         *callback_msg = Some(CStr::from_ptr(msg).to_str().unwrap().to_string());
     }
     let mut callback_msg: Option<String> = None;
     unsafe {
-        assert_eq!(GifskiError::OK, gifski_set_error_message_callback(g, errcb, &mut callback_msg as *mut _ as _));
+        assert_eq!(GifskiError::OK, gifski_set_error_message_callback(g, errcb, std::ptr::addr_of_mut!(callback_msg) as _));
         assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 1 as _));
         assert_eq!(GifskiError::INVALID_STATE, gifski_set_write_callback(g, Some(cb), 1 as _));
         assert_eq!(GifskiError::INVALID_STATE, gifski_finish(g));

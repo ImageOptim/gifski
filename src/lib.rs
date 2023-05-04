@@ -412,7 +412,7 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &Vec<RGB8>) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
         let mut liq = Attributes::new();
         if settings.s.fast {
             liq.set_speed(10)?;

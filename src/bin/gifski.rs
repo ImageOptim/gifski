@@ -17,8 +17,6 @@ pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, 
 
 use clap::{Command, Arg, ArgAction};
 
-use rgb::*;
-
 use std::env;
 use std::fmt;
 use std::fs::File;
@@ -407,7 +405,7 @@ impl ProgressReporter for ProgressBar {
                 } else {
                     (new_estimate as f64/1_000., "KB", 0)
                 };
-                self.pb.message(&format!("{num:.x$}{unit} GIF; Frame ", x = x));
+                self.pb.message(&format!("{num:.x$}{unit} GIF; Frame "));
             }
         }
     }
