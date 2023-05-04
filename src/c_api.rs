@@ -186,6 +186,30 @@ pub unsafe extern "C" fn gifski_set_extra_effort(handle: *mut GifskiHandle, extr
     }
 }
 
+/// Adds a fixed color that will be kept in the palette at all times.
+/// Useful to avoid glitches in mixed photographic/pixel art.
+///
+/// Only valid immediately after calling `gifski_new`, before any frames are added.
+#[no_mangle]
+pub unsafe extern "C" fn gifski_add_fixed_color(
+    handle: *mut GifskiHandle,
+    col_r: u8,
+    col_g: u8,
+    col_b: u8,
+) -> GifskiError {
+    let g = match borrow(handle) {
+        Some(g) => g,
+        None => return GifskiError::NULL_ARG,
+    };
+    if let Ok(Some(w)) = g.writer.lock().as_deref_mut() {
+        #[allow(deprecated)]
+        w.add_fixed_color(RGB8::new(col_r, col_g, col_b));
+        GifskiError::OK
+    } else {
+        GifskiError::INVALID_STATE
+    }
+}
+
 /// Adds a frame to the animation. This function is asynchronous.
 ///
 /// File path must be valid UTF-8.

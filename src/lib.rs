@@ -145,6 +145,8 @@ pub struct Writer {
     /// Input frame decoder results
     queue_iter: Option<Receiver<InputFrameUnresized>>,
     settings: SettingsExt,
+    /// Colors the caller has specified as fixed (i.e. key colours)
+    fixed_colors: Vec<RGB8>,
 }
 
 struct GIFFrame {
@@ -219,7 +221,8 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
                 giflossy_quality: settings.quality,
                 extra_effort: false,
                 s: settings,
-            }
+            },
+            fixed_colors: Vec::new(),
         },
     ))
 }
@@ -396,12 +399,20 @@ impl Writer {
         self.settings.giflossy_quality = q;
     }
 
+    /// Adds a fixed color that will be kept in the palette at all times.
+    /// Useful to avoid glitches in mixed photographic/pixel art.
+    /// This can't be in settings because that would cause it to lose Copy.
+    /// Additionally to avoid breaking C API compatibility this has to be mutable there too.
+    pub fn add_fixed_color(&mut self, col: RGB8) {
+        self.fixed_colors.push(col);
+    }
+
     /// `importance_map` is computed from previous and next frame.
     /// Improves quality of pixels visible for longer.
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
+    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &Vec<RGB8>) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
         let mut liq = Attributes::new();
         if settings.s.fast {
             liq.set_speed(10)?;
@@ -429,6 +440,10 @@ impl Writer {
         // first frame may be transparent too, so it's not just for diffs
         if needs_transparency {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0))?;
+        }
+        // user may have colors which need to be preserved and left undithered
+        for color in fixed_colors {
+            img.add_fixed_color(RGBA8::new(color.r, color.g, color.b, 255))?;
         }
 
         let mut res = liq.quantize(&mut img)?;
@@ -526,7 +541,7 @@ impl Writer {
         })?;
         let (remap_queue, remap_queue_recv) = ordqueue::new(0);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
-            Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext)
+            Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext, &self.fixed_colors)
         })?;
         let (write_queue, write_queue_recv) = crossbeam_channel::bounded(0);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
@@ -640,7 +655,7 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &Vec<RGB8>) -> CatResult<()> {
         minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 
@@ -706,7 +721,7 @@ impl Writer {
             }
 
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
-            let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings)?;
+            let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings, fixed_colors)?;
 
             remap_queue.push(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
