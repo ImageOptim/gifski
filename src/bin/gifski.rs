@@ -143,12 +143,6 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(value_parser!(i16))
                             .value_name("num"))
-                        .arg(Arg::new("fixed")
-                            .long("fixed")
-                            .help("Image containing a set of fixed colours (useful for avoiding glitches when mixing photos and pixel art)")
-                            .num_args(1)
-                            .value_name("pal.png")
-                            .value_parser(value_parser!(PathBuf)))
                         .get_matches_from(wild::args_os());
 
     let mut frames: Vec<_> = matches.get_many::<String>("FILES").ok_or("?")?.collect();
@@ -170,7 +164,6 @@ fn bin_main() -> BinResult<()> {
     let extra = matches.get_flag("extra");
     let motion_quality = matches.get_one::<u8>("motion-quality").copied();
     let lossy_quality = matches.get_one::<u8>("lossy-quality").copied();
-    let fixed_path = matches.get_one::<PathBuf>("fixed");
     let fast = matches.get_flag("fast");
     let settings = Settings {
         width,
@@ -207,10 +200,6 @@ fn bin_main() -> BinResult<()> {
     }
 
     check_if_paths_exist(&frames)?;
-
-    if let Some(path) = fixed_path {
-        check_if_paths_exist(&[path.clone()])?;
-    }
 
     let mut decoder = if let [path] = &frames[..] {
         match file_type(path).unwrap_or(FileType::Other) {
@@ -261,12 +250,7 @@ fn bin_main() -> BinResult<()> {
         #[allow(deprecated)]
         writer.set_lossy_quality(lossy_quality);
     }
-    if let Some(path) = fixed_path {
-        let palette = lodepng::decode32_file(&path)?;
-        for color in palette.buffer {
-            writer.add_fixed_color(RGB8::new(color.r, color.g, color.b));
-        }
-    }
+
     let decode_thread = thread::Builder::new().name("decode".into()).spawn(move || {
         decoder.collect(&mut collector)
     })?;
