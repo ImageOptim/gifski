@@ -51,6 +51,7 @@ use std::sync::atomic::Ordering::Relaxed;
 
 enum FrameSource {
     Pixels(ImgVec<RGBA8>),
+    #[cfg(feature = "png")]
     Path(PathBuf),
 }
 struct InputFrameUnresized {
@@ -566,6 +567,7 @@ impl Writer {
                 }
                 let image = match frame.frame {
                     FrameSource::Pixels(image) => image,
+                    #[cfg(feature = "png")]
                     FrameSource::Path(path) => {
                         let image = lodepng::decode32_file(&path)
                             .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
