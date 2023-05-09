@@ -58,6 +58,7 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 # so all CLI dependencies have to be enabled by default
 default = ["gifsicle", "binary"]
 binary = ["dep:clap", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
+capi = [] # internal for cargo-c only
 png = ["dep:lodepng"]
 openmp = [] # deprecated, obsolete
 openmp-static = [] # deprecated, obsolete
@@ -86,6 +87,13 @@ strip = true
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[package.metadata.capi.header]
+subdirectory = false
+generation = false
+
+[package.metadata.capi.install.include]
+asset = [{from = "gifski.h"}]
 
 [patch.crates-io]
 # ffmpeg-sys-next does not support cross-compilation, which I use to produce binaries https://github.com/zmwangx/rust-ffmpeg-sys/pull/30

@@ -55,6 +55,21 @@ cargo build --release
 
 and link with `target/release/libgifski.a`. Please observe the [LICENSE](LICENSE).
 
+### C dynamic library for package maintainers
+
+The build process uses [`cargo-c`](https://lib.rs/cargo-c) for building the dynamic library correctly and generating the pkg-config file.
+
+```sh
+rustup update
+cargo install cargo-c
+# build
+cargo cbuild --prefix=/usr --release
+# install
+cargo cinstall --prefix=/usr --release --destdir=pkgroot
+```
+
+The `cbuild` command can be omitted, since `cinstall` will trigger a build if it hasn't been done already.
+
 ## License
 
 AGPL 3 or later. I can offer alternative licensing options, including [commercial licenses](https://supso.org/projects/pngquant). Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license.
