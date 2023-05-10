@@ -150,6 +150,8 @@ pub struct Writer {
     queue_iter: Option<Receiver<InputFrameUnresized>>,
     settings: SettingsExt,
     /// Colors the caller has specified as fixed (i.e. key colours)
+    /// This can't be in settings because that would cause it to lose Copy.
+    /// Additionally to avoid breaking C API compatibility this has to be mutable there too.
     fixed_colors: Vec<RGB8>,
 }
 
@@ -409,11 +411,13 @@ impl Writer {
     }
 
     /// Adds a fixed color that will be kept in the palette at all times.
-    /// Useful to avoid glitches in mixed photographic/pixel art.
-    /// This can't be in settings because that would cause it to lose Copy.
-    /// Additionally to avoid breaking C API compatibility this has to be mutable there too.
+    ///
+    /// This may increase file size, because every frame will use a larger palette.
+    /// Max 255 allowed, because one more is reserved for transparency.
     pub fn add_fixed_color(&mut self, col: RGB8) {
-        self.fixed_colors.push(col);
+        if self.fixed_colors.len() < 255 {
+            self.fixed_colors.push(col);
+        }
     }
 
     /// `importance_map` is computed from previous and next frame.

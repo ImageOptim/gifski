@@ -142,6 +142,13 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(value_parser!(i16))
                             .value_name("num"))
+                        .arg(Arg::new("fixed-color")
+                            .long("fixed-color")
+                            .help("Always include this color in the palette")
+                            .num_args(1)
+                            .action(ArgAction::Append)
+                            .value_parser(parse_colors)
+                            .value_name("RGBHEX"))
                         .get_matches_from(wild::args_os());
 
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
@@ -174,6 +181,7 @@ fn bin_main() -> BinResult<()> {
     let quiet = matches.get_flag("quiet") || output_path == DestPath::Stdout;
     let fps: f32 = matches.get_one::<f32>("fps").copied().ok_or("?")?;
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
+    let fixed_colors = matches.get_many::<Vec<rgb::RGB8>>("fixed-color");
 
     let rate = source::Fps { fps, speed };
 
@@ -237,6 +245,11 @@ fn bin_main() -> BinResult<()> {
     };
 
     let (mut collector, mut writer) = gifski::new(settings)?;
+    if let Some(fixed_colors) = fixed_colors {
+        for f in fixed_colors.flat_map(|v| v) {
+            writer.add_fixed_color(*f);
+        }
+    }
     if extra {
         #[allow(deprecated)]
         writer.set_extra_effort(true);
@@ -272,6 +285,35 @@ fn bin_main() -> BinResult<()> {
     progress.done(&format!("gifski created {output_path}"));
 
     Ok(())
+}
+
+fn parse_color(c: &str) -> Result<rgb::RGB8, String> {
+    let c = c.trim_matches(|c:char| c.is_ascii_whitespace());
+    let c = c.strip_prefix('#').unwrap_or(c);
+
+    if c.len() != 6 {
+        return Err(format!("color must be 6-char hex format, not '{c}'"));
+    }
+    let mut c = c.as_bytes().chunks_exact(2)
+        .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap_or_default(), 16).map_err(|e| e.to_string()));
+    Ok(rgb::RGB8::new(
+        c.next().ok_or_else(String::new)??,
+        c.next().ok_or_else(String::new)??,
+        c.next().ok_or_else(String::new)??,
+    ))
+}
+
+fn parse_colors(colors: &str) -> Result<Vec<rgb::RGB8>, String> {
+    colors.split(|c:char| c == ' ' || c == ',')
+        .filter(|c| !c.is_empty())
+        .map(parse_color)
+        .collect()
+}
+
+#[test]
+fn color_parser() {
+    assert_eq!(parse_colors("#123456 78abCD,, ,").unwrap(), vec![rgb::RGB8::new(0x12,0x34,0x56), rgb::RGB8::new(0x78,0xab,0xcd)]);
+    assert!(parse_colors("#12345").is_err());
 }
 
 #[allow(clippy::upper_case_acronyms)]
