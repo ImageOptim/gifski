@@ -608,7 +608,7 @@ impl Writer {
             LastFrameDuration::FrameRate(0.)
         };
 
-        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.motion_quality);
+        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.motion_quality)?;
 
         let mut next_frame = Some(first_frame);
         let mut ordinal_frame_number = 0;

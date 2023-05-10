@@ -394,7 +394,7 @@ pub unsafe extern "C" fn gifski_set_error_message_callback(handle: *const Gifski
             *error_callback = Some(Box::new(move |mut s: String| {
                 s.reserve_exact(1);
                 s.push('\0');
-                let cstring = CString::from_vec_with_nul(s.into_bytes()).unwrap();
+                let cstring = CString::from_vec_with_nul(s.into_bytes()).unwrap_or_default();
                 unsafe { cb(cstring.as_ptr(), user_data.clone().0) } // the clone is a no-op, only to force closure to own it
             }));
             GifskiError::OK
