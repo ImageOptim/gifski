@@ -143,7 +143,7 @@ fn bin_main() -> BinResult<()> {
                             .value_name("num"))
                         .get_matches_from(wild::args_os());
 
-    let mut frames: Vec<_> = matches.get_many::<String>("FILES").ok_or("?")?.collect();
+    let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
     if !matches.get_flag("nosort") {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
