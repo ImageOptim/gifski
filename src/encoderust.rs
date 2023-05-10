@@ -43,6 +43,7 @@ impl<W: Write> RustEncoder<W> {
 }
 
 impl<W: Write> RustEncoder<W> {
+    #[inline(never)]
     pub fn compress_frame(f: GIFFrame, settings: &SettingsExt) -> CatResult<gif::Frame<'static>> {
         let GIFFrame {left, top, pal, image, dispose, transparent_index} = f;
 
@@ -80,6 +81,7 @@ impl<W: Write> RustEncoder<W> {
     }
 
     #[cfg(feature = "gifsicle")]
+    #[inline(never)]
     fn compress_gifsicle(frame: &mut gif::Frame<'static>, loss: u32) -> CatResult<()> {
         use crate::Error;
         use gifsicle::*;

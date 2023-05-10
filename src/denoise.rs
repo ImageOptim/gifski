@@ -110,6 +110,7 @@ impl<T> Denoiser<T> {
     }
 
     /// Generate last few frames
+    #[inline(never)]
     pub fn flush(&mut self) {
         while self.processed.len() < self.metadatas.len() {
             let mut median1 = Vec::with_capacity(self.splat.width() * self.splat.height());
@@ -138,6 +139,7 @@ impl<T> Denoiser<T> {
         self.push_frame(frame, frame_blurred.as_ref(), frame_metadata)
     }
 
+    #[inline(never)]
     pub fn push_frame(&mut self, frame: ImgRef<RGBA8>, frame_blurred: ImgRef<RGB8>, frame_metadata: T) -> Result<(), WrongSizeError> {
         if frame.width() != self.splat.width() || frame.height() != self.splat.height() {
             return Err(WrongSizeError);
@@ -168,6 +170,7 @@ impl<T> Denoiser<T> {
         Ok(())
     }
 
+    #[inline]
     pub fn pop(&mut self) -> Denoised<T> {
         if let Some((frame, importance_map)) = self.processed.pop_back() {
             let meta = self.metadatas.pop_back().expect("meta");
@@ -296,6 +299,7 @@ macro_rules! blur_channel {
     }}
 }
 
+#[inline(never)]
 pub(crate) fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     let mut out = Vec::with_capacity(frame.width() * frame.height());
     loop9_img(frame, |_,_, top, mid, bot| {
@@ -315,6 +319,7 @@ pub(crate) fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     ImgVec::new(out, frame.width(), frame.height())
 }
 
+#[inline(never)]
 pub(crate) fn less_smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     let mut out = Vec::with_capacity(frame.width() * frame.height());
     loop9_img(frame, |_,_, top, mid, bot| {

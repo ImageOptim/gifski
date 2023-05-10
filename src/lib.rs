@@ -107,7 +107,9 @@ impl Settings {
     }
 
     /// `add_frame` is going to resize the images to this size.
-    #[must_use] pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
+    #[must_use]
+    #[inline]
+    pub fn dimensions_for_image(&self, width: usize, height: usize) -> (usize, usize) {
         dimensions_for_image((width, height), (self.width, self.height))
     }
 }
@@ -123,6 +125,7 @@ impl SettingsExt {
 }
 
 impl Default for Settings {
+    #[inline]
     fn default() -> Self {
         Self {
             width: None, height: None,
@@ -264,6 +267,7 @@ impl Collector {
     }
 }
 
+#[inline(never)]
 fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
@@ -287,6 +291,7 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
 
 #[allow(clippy::identity_op)]
 #[allow(clippy::erasing_op)]
+#[inline(never)]
 fn dither_image(mut image: ImgRefMut<RGBA8>) {
     let width = image.width();
     let height = image.height();
@@ -335,6 +340,7 @@ fn dither_image(mut image: ImgRefMut<RGBA8>) {
 
 /// `add_frame` is going to resize the image to this size.
 /// The `Option` args are user-specified max width and max height
+#[inline(never)]
 fn dimensions_for_image((img_w, img_h): (usize, usize), resize_to: (Option<u32>, Option<u32>)) -> (usize, usize) {
     match resize_to {
         (None, None) => {
@@ -366,12 +372,14 @@ enum LastFrameDuration {
 }
 
 impl LastFrameDuration {
+    #[inline]
     pub fn value(&self) -> f64 {
         match self {
             Self::FixedOffset(val) | Self::FrameRate(val) => *val,
         }
     }
 
+    #[inline]
     pub fn shift_every_pts_by(&self) -> f64 {
         match self {
             Self::FixedOffset(offset) => *offset,
@@ -468,6 +476,7 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
+    #[inline(never)]
     fn write_frames(write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let (send, recv) = ordqueue::new(2);
         minipool::new_scope((if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
@@ -523,11 +532,12 @@ impl Writer {
     /// `outfile` can be any writer, such as `File` or `&mut Vec`.
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
-    #[allow(unused_mut)]
+    #[inline]
     pub fn write<W: Write>(self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         self.write_inner(&mut writer, reporter)
     }
 
+    #[inline(never)]
     fn write_inner(mut self, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
