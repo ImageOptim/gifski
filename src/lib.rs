@@ -97,6 +97,7 @@ struct SettingsExt {
     pub extra_effort: bool,
     pub motion_quality: u8,
     pub giflossy_quality: u8,
+    pub matte: Option<RGB8>,
 }
 
 impl Settings {
@@ -222,11 +223,12 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         Writer {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
+                s: settings,
                 max_threads: max_threads.try_into()?,
                 motion_quality: settings.quality,
                 giflossy_quality: settings.quality,
                 extra_effort: false,
-                s: settings,
+                matte: None,
             },
             fixed_colors: Vec::new(),
         },
@@ -270,7 +272,7 @@ impl Collector {
 }
 
 #[inline(never)]
-fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>) -> CatResult<ImgVec<RGBA8>> {
+fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>, matte: Option<RGB8>) -> CatResult<ImgVec<RGBA8>> {
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
     let mut image = if width != image.width() || height != image.height() {
@@ -286,7 +288,21 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
         image
     };
 
-    dither_image(image.as_mut());
+    if let Some(matte) = matte {
+        image.pixels_mut().filter(|px| px.a < 255 && px.a > 0).for_each(move |px| {
+            let alpha = px.a as u16;
+            let inv_alpha = 255 - alpha;
+
+            *px = RGBA8 {
+                r: ((px.r as u16 * alpha + matte.r as u16 * inv_alpha) / 255) as u8,
+                g: ((px.g as u16 * alpha + matte.g as u16 * inv_alpha) / 255) as u8,
+                b: ((px.b as u16 * alpha + matte.b as u16 * inv_alpha) / 255) as u8,
+                a: 255,
+            };
+        });
+    } else {
+        dither_image(image.as_mut());
+    }
 
     Ok(image)
 }
@@ -418,6 +434,12 @@ impl Writer {
         if self.fixed_colors.len() < 255 {
             self.fixed_colors.push(col);
         }
+    }
+
+    #[deprecated(note = "please don't use, it will be in Settings eventually")]
+    #[doc(hidden)]
+    pub fn set_matte_color(&mut self, col: RGB8) {
+        self.settings.matte = Some(col);
     }
 
     /// `importance_map` is computed from previous and next frame.
@@ -588,7 +610,7 @@ impl Writer {
                         Img::new(image.buffer, image.width, image.height)
                     },
                 };
-                let resized = resized_binary_alpha(image, settings.s.width, settings.s.height)?;
+                let resized = resized_binary_alpha(image, settings.s.width, settings.s.height, settings.matte)?;
                 let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
                 diff_queue.push(frame.frame_index, InputFrame {
                     frame: resized,

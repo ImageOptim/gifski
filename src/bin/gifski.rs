@@ -149,6 +149,12 @@ fn bin_main() -> BinResult<()> {
                             .action(ArgAction::Append)
                             .value_parser(parse_colors)
                             .value_name("RGBHEX"))
+                        .arg(Arg::new("matte")
+                            .long("matte")
+                            .help("Background color for semitransparent pixels")
+                            .num_args(1)
+                            .value_parser(parse_color)
+                            .value_name("RGBHEX"))
                         .get_matches_from(wild::args_os());
 
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
@@ -182,6 +188,7 @@ fn bin_main() -> BinResult<()> {
     let fps: f32 = matches.get_one::<f32>("fps").copied().ok_or("?")?;
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
     let fixed_colors = matches.get_many::<Vec<rgb::RGB8>>("fixed-color");
+    let matte = matches.get_one::<rgb::RGB8>("matte");
 
     let rate = source::Fps { fps, speed };
 
@@ -249,6 +256,10 @@ fn bin_main() -> BinResult<()> {
         for f in fixed_colors.flat_map(|v| v) {
             writer.add_fixed_color(*f);
         }
+    }
+    if let Some(matte) = matte {
+        #[allow(deprecated)]
+        writer.set_matte_color(*matte);
     }
     if extra {
         #[allow(deprecated)]
