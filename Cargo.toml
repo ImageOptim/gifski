@@ -53,16 +53,17 @@ features = ["codec", "format", "filter", "software-resampling", "software-scalin
 lodepng = "3.8.1"
 
 [features]
-# cargo build will skip the binaries with missing required-features
-# so all CLI dependencies have to be enabled by default
+# `cargo build` will skip the binaries with missing `required-features`
+# so all CLI dependencies have to be enabled by default.
 default = ["gifsicle", "binary"]
 binary = ["dep:clap", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
 capi = [] # internal for cargo-c only
 png = ["dep:lodepng"]
-openmp = [] # deprecated, obsolete
-openmp-static = [] # deprecated, obsolete
+# Links dynamically to ffmpeg. Needs ffmpeg devel package installed on the system.
 video = ["ffmpeg"]
+# Builds ffmpeg from source. Needs a C compiler, and all of ffmpeg's source dependencies.
 video-static = ["video", "ffmpeg/build"]
+# If you're lucky, this one might work with ffmpeg from vcpkg.
 video-prebuilt-static = ["video", "ffmpeg/static"]
 
 [lib]
