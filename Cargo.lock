@@ -316,16 +316,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gifsicle"
-version = "1.94.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fb239591bc88ef44483785c68add76a779b7aa574ecfde669affe73ec59216f"
-dependencies = [
- "cc",
- "libc",
-]
-
-[[package]]
 name = "gifski"
 version = "1.12.2"
 dependencies = [
@@ -336,7 +326,6 @@ dependencies = [
  "ffmpeg-next",
  "gif",
  "gif-dispose",
- "gifsicle",
  "imagequant",
  "imgref",
  "lodepng",
@@ -347,7 +336,6 @@ dependencies = [
  "quick-error",
  "resize",
  "rgb",
- "scopeguard",
  "wild",
 ]
 

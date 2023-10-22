@@ -45,6 +45,9 @@ mod denoise;
 use crate::denoise::*;
 mod encoderust;
 
+#[cfg(feature = "gifsicle")]
+mod gifsicle;
+
 mod minipool;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -126,7 +129,7 @@ impl Settings {
 impl SettingsExt {
     pub(crate) fn gifsicle_loss(&self) -> u32 {
         if cfg!(feature = "gifsicle") && self.giflossy_quality < 100 {
-            (100. / 5. - f32::from(self.giflossy_quality) / 5.).powf(1.8).ceil() as u32 + 10
+            ((100. / 5. - f32::from(self.giflossy_quality) / 5.).powf(1.8).ceil() as u32 + 10) * 10
         } else {
             0
         }

@@ -24,6 +24,7 @@ quick_error! {
         }
         Io(err: io::Error) {
             from()
+            from(_oom: std::collections::TryReserveError) -> (io::ErrorKind::OutOfMemory.into())
             display("I/O: {}", err)
         }
         PNG(msg: String) {
