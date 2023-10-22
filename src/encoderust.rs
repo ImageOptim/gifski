@@ -137,7 +137,7 @@ impl<W: Write> RustEncoder<W> {
                 gifsicle::Gif_WriterCleanup(grr);
             });
 
-            let mut res = Gif_SetUncompressedImage(&mut **g, frame.buffer.as_ptr() as *mut u8, None, 0);
+            let mut res = Gif_SetUncompressedImage(&mut **g, frame.buffer.as_ptr().cast_mut(), None, 0);
             if res != 0 {
                 res = gifsicle::Gif_WriteCompressedData(ptr::null_mut(), *g, min_code_size as _, &mut **grr);
             }

@@ -90,7 +90,7 @@ impl<T> Denoiser<T> {
             b: Default::default(),
             blur: Default::default(),
             alpha_bits: (1 << LOOKAHEAD) - 1,
-            bg_set: Default::default(),
+            bg_set: RGBA8::default(),
             stayed_for: 0,
             can_stay_for: 0,
         };

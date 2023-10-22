@@ -1,3 +1,13 @@
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::enum_glob_use)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::needless_pass_by_value)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::wildcard_imports)]
+
 use clap::builder::NonEmptyStringValueParser;
 use std::io::Read;
 use std::io::Stdout;
@@ -227,7 +237,7 @@ fn bin_main() -> BinResult<()> {
             _ if path.is_dir() => {
                 return Err(format!("{} is a directory, not a PNG file", path.display()).into());
             },
-            _ => get_video_decoder(path, rate, settings)?,
+            FileType::Other => get_video_decoder(path, rate, settings)?,
         }
     } else {
         if let Ok(FileType::JPEG) = file_type(&frames[0]) {
@@ -253,7 +263,7 @@ fn bin_main() -> BinResult<()> {
 
     let (mut collector, mut writer) = gifski::new(settings)?;
     if let Some(fixed_colors) = fixed_colors {
-        for f in fixed_colors.flat_map(|v| v) {
+        for f in fixed_colors.flatten() {
             writer.add_fixed_color(*f);
         }
     }
@@ -447,7 +457,7 @@ impl ProgressReporter for ProgressBar {
     }
 
     fn written_bytes(&mut self, bytes: u64) {
-        let min_frames = self.total.map(|t| (t / 16).clamp(5, 50)).unwrap_or(10);
+        let min_frames = self.total.map_or(10, |t| (t / 16).clamp(5, 50));
         if self.frames > min_frames {
             let total_size = bytes * self.pb.total / self.frames;
             let new_estimate = if total_size >= self.previous_estimate { total_size } else { (self.previous_estimate + total_size) / 2 };

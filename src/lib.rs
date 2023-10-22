@@ -16,6 +16,17 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::enum_glob_use)]
+#![allow(clippy::if_not_else)]
+#![allow(clippy::inline_always)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::needless_pass_by_value)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::wildcard_imports)]
 
 use encoderust::RustEncoder;
 use gif::DisposalMethod;
@@ -33,9 +44,6 @@ pub mod c_api;
 mod denoise;
 use crate::denoise::*;
 mod encoderust;
-
-// #[cfg(feature = "gifsicle")]
-// mod encodegifsicle;
 
 mod minipool;
 
@@ -290,13 +298,13 @@ fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option
 
     if let Some(matte) = matte {
         image.pixels_mut().filter(|px| px.a < 255 && px.a > 0).for_each(move |px| {
-            let alpha = px.a as u16;
+            let alpha = u16::from(px.a);
             let inv_alpha = 255 - alpha;
 
             *px = RGBA8 {
-                r: ((px.r as u16 * alpha + matte.r as u16 * inv_alpha) / 255) as u8,
-                g: ((px.g as u16 * alpha + matte.g as u16 * inv_alpha) / 255) as u8,
-                b: ((px.b as u16 * alpha + matte.b as u16 * inv_alpha) / 255) as u8,
+                r: ((u16::from(px.r) * alpha + u16::from(matte.r) * inv_alpha) / 255) as u8,
+                g: ((u16::from(px.g) * alpha + u16::from(matte.g) * inv_alpha) / 255) as u8,
+                b: ((u16::from(px.b) * alpha + u16::from(matte.b) * inv_alpha) / 255) as u8,
                 a: 255,
             };
         });
@@ -693,7 +701,7 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &Vec<RGB8>) -> CatResult<()> {
+    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<()> {
         minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter().peekable();
 

@@ -576,7 +576,7 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
 impl GifskiHandleInternal {
     fn print_error(&self, mut err: String) {
         if let Ok(Some(cb)) = self.error_callback.lock().as_deref() {
-            cb(err)
+            cb(err);
         } else {
             err.reserve_exact(1);
             err.push('\n');
