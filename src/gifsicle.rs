@@ -1,4 +1,3 @@
-use std::ptr;
 
 pub struct GiflossyImage<'data> {
     img: &'data [u8],
@@ -21,34 +20,20 @@ pub struct GiflossyWriter {
 
 struct CodeTable {
     pub nodes: Vec<Node>,
-    pub nodes_used: usize,
-    pub links: Vec<*mut Node>,
     pub links_used: usize,
     pub clear_code: LzwCode,
 }
 
 struct Node {
     pub code: LzwCode,
-    pub linked_list_nodes_min: u8,
     pub suffix: u8,
-    pub next_sibling: *mut Node,
     pub children: NodeChild,
 }
 
-impl Node {
-    unsafe fn as_table(&mut self, clear_code: u16) -> Option<&mut [*mut Node]> {
-        if self.linked_list_nodes_min != 0 { return None; }
-
-        Some(std::slice::from_raw_parts_mut(
-            self.children.table,
-            clear_code as usize
-        ))
-    }
-}
-
-union NodeChild {
-    pub linked_list: *mut Node,
-    pub table: *mut *mut Node,
+enum NodeChild {
+    /// This emulates old quirks to keep bit-exactly same output
+    ThisUsedToBeALinkedList(Vec<Node>),
+    Table(Box<[Option<Node>]>),
 }
 
 type RgbDiff = rgb::RGB<i16>;
@@ -95,112 +80,99 @@ fn diffused_difference(
 }
 
 impl CodeTable {
-    #[cold]
-    unsafe fn change_last_node_to_table(&mut self, work_node: &mut Node) {
-        let next_node = &mut self.nodes[self.nodes_used - 1];
-        let table = &mut self.links[self.links_used..][..self.clear_code as usize];
-        self.links_used += self.clear_code as usize;
-
-        table.fill(ptr::null_mut());
-        table[next_node.suffix as usize] = next_node;
-
-        let mut node_ptr = work_node.children.linked_list;
-        while let Some(node) = node_ptr.as_mut() {
-            table[node.suffix as usize] = node;
-            node_ptr = node.next_sibling;
-        }
-        work_node.linked_list_nodes_min = 0;
-        work_node.children.table = table.as_mut_ptr();
-    }
-
     #[inline]
-    unsafe fn define(&mut self, work_node: &mut Node, suffix: u8, next_code: LzwCode) {
-        let next_node = &mut self.nodes[self.nodes_used];
-        self.nodes_used += 1;
-        *next_node = Node {
+    fn define(&mut self, work_node: &mut Node, suffix: u8, next_code: LzwCode) {
+        let next_node = Node {
             code: next_code,
-            linked_list_nodes_min: 1,
             suffix,
-            children: NodeChild {  linked_list: ptr::null_mut() },
-            next_sibling: ptr::null_mut(),
+            children: NodeChild::ThisUsedToBeALinkedList(Vec::new()),
         };
-        if let Some(table) = work_node.as_table(self.clear_code) {
-            table[suffix as usize] = next_node;
-        } else if work_node.linked_list_nodes_min < 5 || self.links_used + (self.clear_code as usize) > 0x1000 {
-            next_node.next_sibling = work_node.children.linked_list;
-            work_node.children.linked_list = next_node;
-            if work_node.linked_list_nodes_min < 5 {
-                work_node.linked_list_nodes_min += 1;
-            }
-        } else {
-            self.change_last_node_to_table(work_node);
+        match &mut work_node.children {
+            NodeChild::ThisUsedToBeALinkedList(list) if list.len() < 4 || self.links_used + self.clear_code as usize > 0x1000 => {
+                if list.is_empty() {
+                    list.reserve_exact(4);
+                }
+                list.push(next_node);
+            },
+            NodeChild::Table(table) => {
+                table[suffix as usize] = Some(next_node);
+            },
+            NodeChild::ThisUsedToBeALinkedList(list) => {
+                self.links_used += self.clear_code as usize;
+
+                let mut table = Vec::with_capacity(self.clear_code as usize);
+                debug_assert_eq!(table.capacity(), self.clear_code as usize);
+                table.resize_with(self.clear_code as usize, || None);
+                let idx = next_node.suffix as usize;
+                table[idx] = Some(next_node);
+
+                for node in list.drain(..) {
+                    let idx = node.suffix as usize;
+                    table[idx] = Some(node);
+                }
+                work_node.children = NodeChild::Table(table.into_boxed_slice());
+            },
         };
     }
 
     #[cold]
     fn reset(&mut self) {
-        self.nodes_used = self.clear_code as usize;
         self.links_used = 0;
-        self.nodes[..usize::from(self.clear_code)].iter_mut().enumerate().for_each(|(i, n)| {
-            *n = Node {
-                code: i as u16,
-                linked_list_nodes_min: 1,
-                suffix: i as u8,
-                children: NodeChild {  linked_list: ptr::null_mut() },
-                next_sibling: ptr::null_mut(),
-            };
-        });
+        self.nodes.clear();
+        self.nodes.extend((0..usize::from(self.clear_code)).map(|i| Node {
+            code: i as u16,
+            suffix: i as u8,
+            children: NodeChild::ThisUsedToBeALinkedList(Vec::new()),
+        }));
     }
 }
-
 
 struct Lookup<'a> {
     pub pal: &'a [RGB8],
     pub image: &'a GiflossyImage<'a>,
     pub max_diff: u32,
-    pub clear_code: u16,
     pub best_node: *mut Node,
     pub best_pos: usize,
     pub best_total_diff: u64,
 }
 
 impl<'a> Lookup<'a> {
-    pub unsafe fn lossy_node(&mut self, pos: usize, node: &mut Node, total_diff: u64, dither: RgbDiff) {
+    pub fn lossy_node(&mut self, pos: usize, node: &mut Node, total_diff: u64, dither: RgbDiff) {
         let Some(px) = self.image.px_at_pos(pos) else {
             return;
         };
-        debug_assert!(LzwCode::from(px) < self.clear_code);
-        if let Some(table) = node.as_table(self.clear_code) {
-            table.iter_mut().enumerate().for_each(|(i, node)| {
-                if let Some(node) = node.as_mut() {
+        match &mut node.children {
+            NodeChild::ThisUsedToBeALinkedList(table) => {
+                table.iter_mut().rev().for_each(|node| {
                     self.try_node(
                         pos,
                         node,
                         px,
-                        i as u8,
+                        node.suffix,
                         dither,
                         total_diff,
                     );
-                }
-            });
-        } else {
-            let mut node_ptr = node.children.linked_list;
-            while let Some(node) = node_ptr.as_mut() {
-                self.try_node(
-                    pos,
-                    node,
-                    px,
-                    node.suffix,
-                    dither,
-                    total_diff,
-                );
-                node_ptr = node.next_sibling;
-            }
+                });
+            },
+            NodeChild::Table(table) => {
+                table.iter_mut().for_each(|node| {
+                    if let Some(node) = node.as_mut() {
+                        self.try_node(
+                            pos,
+                            node,
+                            px,
+                            node.suffix,
+                            dither,
+                            total_diff,
+                        );
+                    }
+                });
+            },
         }
     }
 
     #[inline]
-    unsafe fn try_node(
+    fn try_node(
         &mut self,
         pos: usize,
         node: &mut Node,
@@ -251,70 +223,112 @@ const RUN_INV_THRESH: usize = (1 << RUN_EWMA_SCALE) / 3000;
 
 impl GiflossyWriter {
     pub fn write(&mut self, image: &GiflossyImage, global_pal: Option<&[RGB8]>) -> Result<Vec<u8>, Error> {
-        unsafe {
-            let mut buf = Vec::new();
-            buf.try_reserve((image.height as usize * image.width as usize / 4).next_power_of_two())?;
+        let mut buf = Vec::new();
+        buf.try_reserve((image.height as usize * image.width as usize / 4).next_power_of_two())?;
 
-            let mut run = 0;
-            let mut run_ewma = 0;
-            let mut next_code = 0;
-            let pal = image.pal.or(global_pal).unwrap();
+        let mut run = 0;
+        let mut run_ewma = 0;
+        let mut next_code = 0;
+        let pal = image.pal.or(global_pal).unwrap();
 
-            let min_code_size = (pal.len() as u32).max(3).next_power_of_two().trailing_zeros() as u8;
+        let min_code_size = (pal.len() as u32).max(3).next_power_of_two().trailing_zeros() as u8;
 
-            buf.push(min_code_size);
-            let mut bufpos_bits = 8;
+        buf.push(min_code_size);
+        let mut bufpos_bits = 8;
 
-            let mut code_table = CodeTable {
-                clear_code: 1 << u16::from(min_code_size),
-                links_used: 0,
-                nodes_used: 0,
+        let mut code_table = CodeTable {
+            clear_code: 1 << u16::from(min_code_size),
+            links_used: 0,
+            nodes: Vec::new(),
+        };
+        code_table.reset();
 
-                nodes: Vec::new(),
-                links: vec![ptr::null_mut(); 0x1000],
-            };
-            code_table.nodes.resize_with(0x1000, || Node {
-                code: 0,
-                linked_list_nodes_min: 0,
-                suffix: 0,
-                next_sibling: ptr::null_mut(),
-                children: NodeChild {
-                    linked_list: ptr::null_mut(),
-                },
-            });
-
-            let mut cur_code_bits = min_code_size + 1;
-            let mut output_code = code_table.clear_code as LzwCode;
-            let mut clear_bufpos_bits = bufpos_bits;
-            let mut pos = 0;
-            let mut clear_pos = pos;
+        let mut cur_code_bits = min_code_size + 1;
+        let mut output_code = code_table.clear_code as LzwCode;
+        let mut clear_bufpos_bits = bufpos_bits;
+        let mut pos = 0;
+        let mut clear_pos = pos;
+        loop {
+            let endpos_bits = bufpos_bits + (cur_code_bits as usize);
             loop {
-                let endpos_bits = bufpos_bits + (cur_code_bits as usize);
-                loop {
-                    if bufpos_bits & 7 != 0 {
-                        buf[bufpos_bits / 8] |= (output_code << (bufpos_bits & 7)) as u8;
-                    } else {
-                        buf.push((output_code >> (bufpos_bits + (cur_code_bits as usize) - endpos_bits)) as u8);
-                    }
-                    bufpos_bits = bufpos_bits + 8 - (bufpos_bits & 7);
-                    if bufpos_bits >= endpos_bits {
-                        break;
-                    }
-                }
-                bufpos_bits = endpos_bits;
-                if output_code == code_table.clear_code {
-                    cur_code_bits = min_code_size + 1;
-                    next_code = (code_table.clear_code + 2) as LzwCode;
-                    run_ewma = 1 << RUN_EWMA_SCALE;
-                    code_table.reset();
-                    clear_bufpos_bits = 0;
-                    clear_pos = clear_bufpos_bits;
+                if bufpos_bits & 7 != 0 {
+                    buf[bufpos_bits / 8] |= (output_code << (bufpos_bits & 7)) as u8;
                 } else {
-                    if output_code == (code_table.clear_code + 1) {
-                        break;
+                    buf.push((output_code >> (bufpos_bits + (cur_code_bits as usize) - endpos_bits)) as u8);
+                }
+                bufpos_bits = bufpos_bits + 8 - (bufpos_bits & 7);
+                if bufpos_bits >= endpos_bits {
+                    break;
+                }
+            }
+            bufpos_bits = endpos_bits;
+
+            if output_code == code_table.clear_code {
+                cur_code_bits = min_code_size + 1;
+                next_code = (code_table.clear_code + 2) as LzwCode;
+                run_ewma = 1 << RUN_EWMA_SCALE;
+                code_table.reset();
+                clear_bufpos_bits = 0;
+                clear_pos = clear_bufpos_bits;
+            } else {
+                if output_code == (code_table.clear_code + 1) {
+                    break;
+                }
+                if next_code > (1 << cur_code_bits) && cur_code_bits < 12 {
+                    cur_code_bits += 1;
+                }
+                run = (((run as u32) << RUN_EWMA_SCALE) + (1 << (RUN_EWMA_SHIFT - 1) as u32)) as usize;
+                if run < run_ewma {
+                    run_ewma = run_ewma - ((run_ewma - run) >> RUN_EWMA_SHIFT);
+                } else {
+                    run_ewma = run_ewma + ((run - run_ewma) >> RUN_EWMA_SHIFT);
+                }
+            }
+            if let Some(px) = image.px_at_pos(pos) {
+                let mut l = Lookup {
+                    pal,
+                    image,
+                    max_diff: self.loss,
+                    best_node: &mut code_table.nodes[px as usize],
+                    best_pos: pos + 1,
+                    best_total_diff: 0,
+                };
+                l.lossy_node(pos + 1, &mut code_table.nodes[px as usize], 0, RgbDiff { r: 0, g: 0, b: 0 }, );
+                let selected_node = unsafe { &mut * l.best_node };
+                run = l.best_pos - pos;
+                pos = l.best_pos;
+                output_code = selected_node.code;
+                if let Some(px) = image.px_at_pos(pos) {
+                    if next_code < 0x1000 {
+                        code_table.define(selected_node, px, next_code);
+                        next_code += 1;
+                    } else {
+                        next_code = 0x1001;
                     }
-                    if next_code > (1 << cur_code_bits) && cur_code_bits < 12 {
-                        cur_code_bits += 1;
+                    if next_code >= 0x0FFF {
+                        let pixels_left = image.img.len() - pos - 1;
+                        let do_clear = pixels_left != 0
+                            && (run_ewma
+                                < (36 << RUN_EWMA_SCALE) / (min_code_size as usize)
+                                || pixels_left > (0x7FFF_FFFF * 2 + 1) / RUN_INV_THRESH
+                                || run_ewma < pixels_left * RUN_INV_THRESH);
+                        if (do_clear || run < 7) && clear_pos == 0 {
+                            clear_pos = pos - run;
+                            clear_bufpos_bits = bufpos_bits;
+                        } else if !do_clear && run > 50 {
+                            clear_bufpos_bits = 8; // buf contains min code
+                            clear_pos = 0;
+                        }
+                        if do_clear {
+                            output_code = code_table.clear_code;
+                            pos = clear_pos;
+                            bufpos_bits = clear_bufpos_bits;
+                            buf.truncate((bufpos_bits + 7) / 8);
+                            if buf.len() > bufpos_bits / 8 {
+                                buf[bufpos_bits / 8] &= (1 << (bufpos_bits & 7)) - 1;
+                            }
+                            continue;
+                        }
                     }
                     run = (((run as u32) << RUN_EWMA_SCALE) + (1 << (RUN_EWMA_SHIFT - 1) as u32)) as usize;
                     if run < run_ewma {
@@ -323,67 +337,12 @@ impl GiflossyWriter {
                         run_ewma = run_ewma + ((run - run_ewma) >> RUN_EWMA_SHIFT);
                     }
                 }
-                if let Some(px) = image.px_at_pos(pos) {
-                    let mut l = Lookup {
-                        pal,
-                        image,
-                        max_diff: self.loss,
-                        clear_code: code_table.clear_code,
-                        best_node: &mut code_table.nodes[px as usize],
-                        best_pos: pos + 1,
-                        best_total_diff: 0,
-                    };
-                    l.lossy_node(pos + 1, &mut code_table.nodes[px as usize], 0, RgbDiff { r: 0, g: 0, b: 0 }, );
-                    let selected_node = &mut * l.best_node;
-                    run = l.best_pos - pos;
-                    pos = l.best_pos;
-                    output_code = selected_node.code;
-                    if let Some(px) = image.px_at_pos(pos) {
-                        if next_code < 0x1000 {
-                            code_table.define(selected_node, px, next_code);
-                            next_code += 1;
-                        } else {
-                            next_code = 0x1001;
-                        }
-                        if next_code >= 0x0FFF {
-                            let pixels_left = image.img.len() - pos - 1;
-                            let do_clear = pixels_left != 0
-                                && (run_ewma
-                                    < (36 << RUN_EWMA_SCALE) / (min_code_size as usize)
-                                    || pixels_left > (0x7FFF_FFFF * 2 + 1) / RUN_INV_THRESH
-                                    || run_ewma < pixels_left * RUN_INV_THRESH);
-                            if (do_clear || run < 7) && clear_pos == 0 {
-                                clear_pos = pos - run;
-                                clear_bufpos_bits = bufpos_bits;
-                            } else if !do_clear && run > 50 {
-                                clear_bufpos_bits = 8; // buf contains min code
-                                clear_pos = 0;
-                            }
-                            if do_clear {
-                                output_code = code_table.clear_code;
-                                pos = clear_pos;
-                                bufpos_bits = clear_bufpos_bits;
-                                buf.truncate((bufpos_bits + 7) / 8);
-                                if buf.len() > bufpos_bits / 8 {
-                                    buf[bufpos_bits / 8] &= (1 << (bufpos_bits & 7)) - 1;
-                                }
-                                continue;
-                            }
-                        }
-                        run = (((run as u32) << RUN_EWMA_SCALE) + (1 << (RUN_EWMA_SHIFT - 1) as u32)) as usize;
-                        if run < run_ewma {
-                            run_ewma = run_ewma - ((run_ewma - run) >> RUN_EWMA_SHIFT);
-                        } else {
-                            run_ewma = run_ewma + ((run - run_ewma) >> RUN_EWMA_SHIFT);
-                        }
-                    }
-                } else {
-                    run = 0;
-                    output_code = code_table.clear_code + 1;
-                };
-            }
-            Ok(buf)
+            } else {
+                run = 0;
+                output_code = code_table.clear_code + 1;
+            };
         }
+        Ok(buf)
     }
 }
 
