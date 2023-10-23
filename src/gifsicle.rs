@@ -27,13 +27,7 @@ struct CodeTable {
 struct Node {
     pub code: LzwCode,
     pub suffix: u8,
-    pub children: NodeChild,
-}
-
-enum NodeChild {
-    /// This emulates old quirks to keep bit-exactly same output
-    ThisUsedToBeALinkedList(Vec<Node>),
-    Table(Box<[Option<Node>]>),
+    pub children: Vec<Node>,
 }
 
 type RgbDiff = rgb::RGB<i16>;
@@ -82,37 +76,11 @@ fn diffused_difference(
 impl CodeTable {
     #[inline]
     fn define(&mut self, work_node: &mut Node, suffix: u8, next_code: LzwCode) {
-        let next_node = Node {
+        work_node.children.push(Node {
             code: next_code,
             suffix,
-            children: NodeChild::ThisUsedToBeALinkedList(Vec::new()),
-        };
-        match &mut work_node.children {
-            NodeChild::ThisUsedToBeALinkedList(list) if list.len() < 4 || self.links_used + self.clear_code as usize > 0x1000 => {
-                if list.is_empty() {
-                    list.reserve_exact(4);
-                }
-                list.push(next_node);
-            },
-            NodeChild::Table(table) => {
-                table[suffix as usize] = Some(next_node);
-            },
-            NodeChild::ThisUsedToBeALinkedList(list) => {
-                self.links_used += self.clear_code as usize;
-
-                let mut table = Vec::with_capacity(self.clear_code as usize);
-                debug_assert_eq!(table.capacity(), self.clear_code as usize);
-                table.resize_with(self.clear_code as usize, || None);
-                let idx = next_node.suffix as usize;
-                table[idx] = Some(next_node);
-
-                for node in list.drain(..) {
-                    let idx = node.suffix as usize;
-                    table[idx] = Some(node);
-                }
-                work_node.children = NodeChild::Table(table.into_boxed_slice());
-            },
-        };
+            children: Vec::new(),
+        })
     }
 
     #[cold]
@@ -122,7 +90,7 @@ impl CodeTable {
         self.nodes.extend((0..usize::from(self.clear_code)).map(|i| Node {
             code: i as u16,
             suffix: i as u8,
-            children: NodeChild::ThisUsedToBeALinkedList(Vec::new()),
+            children: Vec::new(),
         }));
     }
 }
@@ -141,34 +109,16 @@ impl<'a> Lookup<'a> {
         let Some(px) = self.image.px_at_pos(pos) else {
             return;
         };
-        match &mut node.children {
-            NodeChild::ThisUsedToBeALinkedList(table) => {
-                table.iter_mut().rev().for_each(|node| {
-                    self.try_node(
-                        pos,
-                        node,
-                        px,
-                        node.suffix,
-                        dither,
-                        total_diff,
-                    );
-                });
-            },
-            NodeChild::Table(table) => {
-                table.iter_mut().for_each(|node| {
-                    if let Some(node) = node.as_mut() {
-                        self.try_node(
-                            pos,
-                            node,
-                            px,
-                            node.suffix,
-                            dither,
-                            total_diff,
-                        );
-                    }
-                });
-            },
-        }
+        node.children.iter_mut().rev().for_each(|node| {
+            self.try_node(
+                pos,
+                node,
+                px,
+                node.suffix,
+                dither,
+                total_diff,
+            );
+        });
     }
 
     #[inline]
