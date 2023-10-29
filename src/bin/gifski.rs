@@ -145,7 +145,6 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1..)
                             .value_parser(NonEmptyStringValueParser::new())
                             .use_value_delimiter(false)
-                            .trailing_var_arg(true)
                             .required(true))
                         .arg(Arg::new("repeat")
                             .long("repeat")
