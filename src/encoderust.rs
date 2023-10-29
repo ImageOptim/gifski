@@ -49,9 +49,9 @@ impl<W: Write> RustEncoder<W> {
 impl<W: Write> RustEncoder<W> {
     #[inline(never)]
     pub fn compress_frame(f: GIFFrame, settings: &SettingsExt) -> CatResult<gif::Frame<'static>> {
-        let GIFFrame {left, top, pal, image, dispose, transparent_index} = f;
+        let GIFFrame {left, top, pal, palette_image, rgba_image, dispose, transparent_index } = f;
 
-        let (buffer, width, height) = image.into_contiguous_buf();
+        let (buffer, width, height) = palette_image.into_contiguous_buf();
 
         let mut pal_rgb = Vec::with_capacity(3 * pal.len());
         for p in &pal {

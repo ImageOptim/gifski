@@ -53,6 +53,7 @@ mod minipool;
 use crossbeam_channel::{Receiver, Sender};
 use std::cell::Cell;
 use std::io::prelude::*;
+use std::marker::PhantomPinned;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -170,7 +171,10 @@ pub struct Writer {
 struct GIFFrame {
     left: u16,
     top: u16,
-    image: ImgVec<u8>,
+    /// Original for reference
+    rgba_image: ImgVec<RGBA8>,
+    /// Remapped to 8 bit
+    palette_image: ImgVec<u8>,
     pal: Vec<RGBA8>,
     dispose: DisposalMethod,
     transparent_index: Option<u8>,
@@ -185,6 +189,14 @@ struct DiffMessage {
     importance_map: Vec<u8>,
 }
 
+
+/// Self-referential
+struct ImageForRemap {
+    rgba_image: ImgVec<RGBA8>,
+    liq_image: Image<'static>,
+    _marker: PhantomPinned,
+}
+
 /// Frame post quantization, before remap
 struct RemapMessage {
     /// 1..
@@ -193,7 +205,7 @@ struct RemapMessage {
     dispose: DisposalMethod,
     liq: Attributes,
     remap: QuantizationResult,
-    liq_image: Image<'static>,
+    image: ImageForRemap,
     out_buf: Vec<u8>,
 }
 
@@ -458,7 +470,7 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
+    fn quantize(rgba_image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<(Attributes, QuantizationResult, ImageForRemap, Vec<u8>)> {
         let mut liq = Attributes::new();
         if settings.s.fast {
             liq.set_speed(10)?;
@@ -474,8 +486,11 @@ impl Writer {
         if settings.s.quality < 50 {
             liq.set_max_colors(u32::from(settings.s.quality * 2).max(16).next_power_of_two())?;
         }
-        let (buf, width, height) = image.into_contiguous_buf();
-        let mut img = liq.new_image(buf, width, height, 0.)?;
+
+        let width = rgba_image.width();
+        let height = rgba_image.height();
+        let stride = rgba_image.stride();
+        let mut img = Image::new_stride_borrowed(&liq, rgba_image.buf(), width, height, stride, 0.)?;
         // only later remapping tracks which area has been damaged by transparency
         // so for previous-transparent background frame the importance map may be invalid
         // because there's a transparent hole in the background not taken into account,
@@ -499,7 +514,12 @@ impl Writer {
         out.try_reserve_exact(width*height).map_err(imagequant::liq_error::from)?;
         res.optionally_prepare_for_dithering_with_background_set(&mut img, &mut out.spare_capacity_mut()[..width*height])?;
 
-        Ok((liq, res, img, out))
+        let image = ImageForRemap {
+            liq_image: unsafe { std::mem::transmute::<Image<'_>, Image<'static>>(img) },
+            rgba_image,
+            _marker: PhantomPinned,
+        };
+        Ok((liq, res, image, out))
     }
 
     fn remap<'a>(liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, mut pal_img: Vec<u8>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
@@ -770,14 +790,14 @@ impl Writer {
             }
 
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
-            let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings, fixed_colors)?;
+            let (liq, remap, image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings, fixed_colors)?;
 
             remap_queue.push(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
                 end_pts,
                 dispose,
                 liq, remap,
-                liq_image,
+                image,
                 out_buf,
             })
         })
@@ -786,14 +806,15 @@ impl Writer {
     fn remap_frames(inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
         let mut inputs = inputs.into_iter().peekable();
         let first_frame = inputs.peek().ok_or(Error::NoFrames)?;
-        let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
+        let mut screen = gif_dispose::Screen::new(first_frame.image.liq_image.width(), first_frame.image.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
         let mut frame_index = 0;
-        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf}) = inputs.next() {
+        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, image, out_buf}) = inputs.next() {
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
 
+            let ImageForRemap { mut rgba_image, liq_image, .. } = image;
             let (mut image8, mut image8_pal) = {
                 let bg = if frame_index != 0 { Some(screen_after_dispose.pixels()) } else { None };
                 Self::remap(liq, remap, liq_image, bg, out_buf)?
@@ -810,6 +831,8 @@ impl Writer {
                 if new_width != image8.width() || new_height != image8.height() {
                     let new_buf = image8.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
                     image8 = ImgVec::new(new_buf, new_width, new_height);
+                    let new_buf = rgba_image.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
+                    rgba_image = ImgVec::new(new_buf, new_width, new_height);
                 }
                 (left, top)
             } else {
@@ -828,7 +851,8 @@ impl Writer {
                 frame: GIFFrame {
                     left,
                     top,
-                    image: image8,
+                    palette_image: image8,
+                    rgba_image,
                     pal: image8_pal,
                     transparent_index,
                     dispose,
@@ -876,7 +900,7 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
+fn trim_image(mut image_trimmed: ImgRef<u8>, pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
     let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
         if Some(px) == transparent_index {
             if dispose == DisposalMethod::Keep {
@@ -887,7 +911,7 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGBA8], transparent_i
                 bg.a == 0
             }
         } else {
-            image8_pal.get(px as usize).copied().unwrap_or_default() == bg
+            pal.get(px as usize).copied().unwrap_or_default() == bg
         }
     };
 
