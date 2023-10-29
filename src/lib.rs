@@ -802,17 +802,22 @@ impl Writer {
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
             let next_frame = inputs.peek();
-            let (left, top, image8) = if frame_index != 0 && next_frame.is_some() {
-                match trim_image(image8, &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
+            let (left, top) = if frame_index != 0 && next_frame.is_some() {
+                let (left, top, new_width, new_height) = match trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
                     None => continue, // no pixels need to be changed after dispose
+                };
+                if new_width != image8.width() || new_height != image8.height() {
+                    let new_buf = image8.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
+                    image8 = ImgVec::new(new_buf, new_width, new_height);
                 }
+                (left, top)
             } else {
                 // must keep first and last frame
-                (0, 0, image8)
+                (0, 0)
             };
 
-            screen_after_dispose.then_blit(Some(&image8_pal), dispose, left, top as _, image8.as_ref(), transparent_index)?;
+            screen_after_dispose.then_blit(Some(&image8_pal), dispose, left, top, image8.as_ref(), transparent_index)?;
 
             write_queue.send(FrameMessage {
                 frame_index,
@@ -871,9 +876,7 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, ImgVec<u8>)> {
-    let mut image_trimmed = image8.as_ref();
-
+fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
     let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
         if Some(px) == transparent_index {
             if dispose == DisposalMethod::Keep {
@@ -911,6 +914,7 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
         .count();
 
     if top > 0 {
+        debug_assert_ne!(image_trimmed.height(), top);
         image_trimmed = image_trimmed.sub_image(0, top, image_trimmed.width(), image_trimmed.height() - top);
         screen = screen.sub_image(0, top, screen.width(), screen.height() - top);
     }
@@ -923,15 +927,24 @@ fn trim_image(mut image8: ImgVec<u8>, image8_pal: &[RGBA8], transparent_index: O
             })
         }).count();
     if left > 0 {
+        debug_assert_ne!(image_trimmed.width(), left);
         image_trimmed = image_trimmed.sub_image(left, 0, image_trimmed.width() - left, image_trimmed.height());
     }
 
-    if image_trimmed.height() != image8.height() || image_trimmed.width() != image8.width() {
-        let (buf, width, height) = image_trimmed.to_contiguous_buf();
-        image8 = Img::new(buf.into_owned(), width, height);
+    let right = (1..image_trimmed.width())
+        .take_while(|&x| {
+            let x = image_trimmed.width()-x;
+            (0..image_trimmed.height()).all(|y| {
+                let px = image_trimmed[(x, y)];
+                is_matching_pixel(px, screen[(x, y)])
+            })
+        }).count();
+    if right > 0 {
+        debug_assert_ne!(image_trimmed.width(), right);
+        image_trimmed = image_trimmed.sub_image(0, 0, image_trimmed.width() - right, image_trimmed.height());
     }
 
-    Some((left as _, top as _, image8))
+    Some((left as _, top as _, image_trimmed.width(), image_trimmed.height()))
 }
 
 trait PushInCapacity<T> {
