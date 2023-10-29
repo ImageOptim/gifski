@@ -3,7 +3,7 @@ use crate::GIFFrame;
 use crate::Settings;
 use crate::SettingsExt;
 use rgb::ComponentBytes;
-use rgb::RGB8;
+use rgb::{RGB8, RGBA8};
 use std::cell::Cell;
 use std::io::Write;
 use std::rc::Rc;
@@ -76,7 +76,7 @@ impl<W: Write> RustEncoder<W> {
         let loss = settings.gifsicle_loss();
         #[cfg(feature = "gifsicle")]
         if loss > 0 {
-            Self::compress_gifsicle(&mut frame, loss)?;
+            Self::compress_gifsicle(&mut frame, rgba_image.buf(), loss)?;
             return Ok(frame);
         }
 
@@ -86,7 +86,7 @@ impl<W: Write> RustEncoder<W> {
 
     #[cfg(feature = "gifsicle")]
     #[inline(never)]
-    fn compress_gifsicle(frame: &mut gif::Frame<'static>, loss: u32) -> CatResult<()> {
+    fn compress_gifsicle(frame: &mut gif::Frame<'static>, rgba_image: &[RGBA8], loss: u32) -> CatResult<()> {
         use crate::Error;
         use gifsicle::{GiflossyImage, GiflossyWriter};
 
@@ -99,7 +99,7 @@ impl<W: Write> RustEncoder<W> {
             })
             .collect::<Vec<_>>();
 
-        let gif_img = GiflossyImage::new(&frame.buffer, frame.width, frame.height, frame.transparent, Some(&g_pal));
+        let gif_img = GiflossyImage::new(&frame.buffer, rgba_image, frame.width, frame.height, frame.transparent, Some(&g_pal));
 
         let mut lossy_writer = GiflossyWriter { loss };
 

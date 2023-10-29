@@ -1,6 +1,9 @@
+use rgb::{RGB8, RGBA8};
+use crate::Error;
 
 pub struct GiflossyImage<'data> {
     img: &'data [u8],
+    rgba_img: &'data [RGBA8],
     width: u16,
     height: u16,
     interlace: bool,
@@ -8,9 +11,6 @@ pub struct GiflossyImage<'data> {
     pal: Option<&'data [RGB8]>,
 }
 
-use rgb::RGB8;
-
-use crate::Error;
 pub type LzwCode = u16;
 
 #[derive(Clone, Copy)]
@@ -35,11 +35,11 @@ struct Node {
 type RgbDiff = rgb::RGB<i16>;
 
 #[inline]
-fn color_diff(a: RGB8, b: RGB8, a_transparent: bool, b_transparent: bool, dither: RgbDiff) -> u32 {
-    if a_transparent != b_transparent {
+fn color_diff(a: RGBA8, b: RGB8, b_transparent: bool, dither: RgbDiff) -> u32 {
+    if (a.a == 0) != b_transparent {
         return (1 << 25) as u32;
     }
-    if a_transparent {
+    if b_transparent {
         return 0;
     }
     let dith =
@@ -56,15 +56,15 @@ fn color_diff(a: RGB8, b: RGB8, a_transparent: bool, b_transparent: bool, dither
         undith
     }
 }
+
 #[inline]
 fn diffused_difference(
-    a: RGB8,
+    a: RGBA8,
     b: RGB8,
-    a_transparent: bool,
     b_transparent: bool,
     dither: RgbDiff,
 ) -> RgbDiff {
-    if a_transparent || b_transparent {
+    if (a.a == 0) || b_transparent {
         RgbDiff { r: 0, g: 0, b: 0 }
     } else {
         RgbDiff {
@@ -111,7 +111,7 @@ struct Lookup<'a> {
 
 impl<'a> Lookup<'a> {
     pub fn lossy_node(&mut self, pos: usize, node_id: NodeId, total_diff: u64, dither: RgbDiff) {
-        let Some(px) = self.image.px_at_pos(pos) else {
+        let Some((px, px_rgba)) = self.image.px_at_pos(pos) else {
             return;
         };
         self.code_table.nodes[node_id as usize].children.iter().copied().for_each(|node_id| {
@@ -119,6 +119,7 @@ impl<'a> Lookup<'a> {
                 pos,
                 node_id,
                 px,
+                px_rgba,
                 dither,
                 total_diff,
             );
@@ -131,6 +132,7 @@ impl<'a> Lookup<'a> {
         pos: usize,
         node_id: NodeId,
         px: u8,
+        px_rgba: RGBA8,
         dither: RgbDiff,
         total_diff: u64,
     ) {
@@ -140,18 +142,16 @@ impl<'a> Lookup<'a> {
             0
         } else {
             color_diff(
-                self.pal[px as usize],
+                px_rgba,
                 self.pal[next_px as usize],
-                Some(px) == self.image.transparent,
                 Some(next_px) == self.image.transparent,
                 dither,
             )
         };
         if diff <= self.max_diff {
             let new_dither = diffused_difference(
-                self.pal[px as usize],
+                px_rgba,
                 self.pal[next_px as usize],
-                Some(px) == self.image.transparent,
                 Some(next_px) == self.image.transparent,
                 dither,
             );
@@ -239,7 +239,7 @@ impl GiflossyWriter {
                     run_ewma = run_ewma + ((run - run_ewma) >> RUN_EWMA_SHIFT);
                 }
             }
-            if let Some(px) = image.px_at_pos(pos) {
+            if let Some((px, px_rgba)) = image.px_at_pos(pos) {
                 let mut l = Lookup {
                     code_table: &code_table,
                     pal,
@@ -249,12 +249,18 @@ impl GiflossyWriter {
                     best_pos: pos + 1,
                     best_total_diff: 0,
                 };
-                l.lossy_node(pos + 1, px as NodeId, 0, RgbDiff { r: 0, g: 0, b: 0 }, );
+                let dither = diffused_difference(
+                    px_rgba,
+                    pal[px as usize],
+                    px_rgba.a == 0,
+                    RgbDiff { r: 0, g: 0, b: 0 },
+                );
+                l.lossy_node(pos + 1, px as NodeId, 0, dither);
                 run = l.best_pos - pos;
                 pos = l.best_pos;
                 let selected_node = &code_table.nodes[l.best_node as usize];
                 output_code = selected_node.code;
-                if let Some(px) = image.px_at_pos(pos) {
+                if let Some((px, _)) = image.px_at_pos(pos) {
                     if next_code < 0x1000 {
                         code_table.define(l.best_node, px, next_code);
                         next_code += 1;
@@ -306,14 +312,17 @@ impl<'a> GiflossyImage<'a> {
     #[must_use]
     pub fn new(
         img: &'a [u8],
+        rgba_img: &'a [RGBA8],
         width: u16,
         height: u16,
         transparent: Option<u8>,
         pal: Option<&'a [RGB8]>,
     ) -> Self {
         assert_eq!(img.len(), width as usize * height as usize);
+        assert_eq!(img.len(), rgba_img.len());
         GiflossyImage {
             img,
+            rgba_img,
             width,
             height,
             interlace: false,
@@ -323,14 +332,13 @@ impl<'a> GiflossyImage<'a> {
     }
 
     #[inline]
-    fn px_at_pos(&self, pos: usize) -> Option<u8> {
-        if !self.interlace {
-            self.img.get(pos).copied()
-        } else {
+    fn px_at_pos(&self, mut pos: usize) -> Option<(u8, RGBA8)> {
+        if self.interlace {
             let y = pos / self.width as usize;
             let x = pos - (y * self.width as usize);
-            self.img.get(self.width as usize * interlaced_line(y, self.height as usize) + x).copied()
+            pos = self.width as usize * interlaced_line(y, self.height as usize) + x;
         }
+        Some((self.img.get(pos).copied()?, self.rgba_img.get(pos).copied()?))
     }
 }
 
