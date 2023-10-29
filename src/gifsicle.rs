@@ -24,10 +24,12 @@ struct CodeTable {
     pub clear_code: LzwCode,
 }
 
+type NodeId = u16;
+
 struct Node {
     pub code: LzwCode,
     pub suffix: u8,
-    pub children: Vec<Node>,
+    pub children: Vec<NodeId>,
 }
 
 type RgbDiff = rgb::RGB<i16>;
@@ -75,12 +77,14 @@ fn diffused_difference(
 
 impl CodeTable {
     #[inline]
-    fn define(&mut self, work_node: &mut Node, suffix: u8, next_code: LzwCode) {
-        work_node.children.push(Node {
+    fn define(&mut self, work_node_id: NodeId, suffix: u8, next_code: LzwCode) {
+        let id = self.nodes.len() as u16;
+        self.nodes.push(Node {
             code: next_code,
             suffix,
             children: Vec::new(),
-        })
+        });
+        self.nodes[work_node_id as usize].children.push(id);
     }
 
     #[cold]
@@ -96,25 +100,25 @@ impl CodeTable {
 }
 
 struct Lookup<'a> {
+    pub code_table: &'a CodeTable,
     pub pal: &'a [RGB8],
     pub image: &'a GiflossyImage<'a>,
     pub max_diff: u32,
-    pub best_node: *mut Node,
+    pub best_node: NodeId,
     pub best_pos: usize,
     pub best_total_diff: u64,
 }
 
 impl<'a> Lookup<'a> {
-    pub fn lossy_node(&mut self, pos: usize, node: &mut Node, total_diff: u64, dither: RgbDiff) {
+    pub fn lossy_node(&mut self, pos: usize, node_id: NodeId, total_diff: u64, dither: RgbDiff) {
         let Some(px) = self.image.px_at_pos(pos) else {
             return;
         };
-        node.children.iter_mut().rev().for_each(|node| {
+        self.code_table.nodes[node_id as usize].children.iter().copied().for_each(|node_id| {
             self.try_node(
                 pos,
-                node,
+                node_id,
                 px,
-                node.suffix,
                 dither,
                 total_diff,
             );
@@ -125,12 +129,13 @@ impl<'a> Lookup<'a> {
     fn try_node(
         &mut self,
         pos: usize,
-        node: &mut Node,
+        node_id: NodeId,
         px: u8,
-        next_px: u8,
         dither: RgbDiff,
         total_diff: u64,
     ) {
+        let node = &self.code_table.nodes[node_id as usize];
+        let next_px = node.suffix;
         let diff = if px == next_px {
             0
         } else {
@@ -153,13 +158,13 @@ impl<'a> Lookup<'a> {
             let new_pos = pos + 1;
             let new_diff = total_diff + u64::from(diff);
             if new_pos > self.best_pos || new_pos == self.best_pos && new_diff < self.best_total_diff {
-                self.best_node = node;
+                self.best_node = node_id;
                 self.best_pos = new_pos;
                 self.best_total_diff = new_diff;
             }
             self.lossy_node(
                 new_pos,
-                node,
+                node_id,
                 new_diff,
                 new_dither,
             );
@@ -236,21 +241,22 @@ impl GiflossyWriter {
             }
             if let Some(px) = image.px_at_pos(pos) {
                 let mut l = Lookup {
+                    code_table: &code_table,
                     pal,
                     image,
                     max_diff: self.loss,
-                    best_node: &mut code_table.nodes[px as usize],
+                    best_node: px as NodeId,
                     best_pos: pos + 1,
                     best_total_diff: 0,
                 };
-                l.lossy_node(pos + 1, &mut code_table.nodes[px as usize], 0, RgbDiff { r: 0, g: 0, b: 0 }, );
-                let selected_node = unsafe { &mut * l.best_node };
+                l.lossy_node(pos + 1, px as NodeId, 0, RgbDiff { r: 0, g: 0, b: 0 }, );
                 run = l.best_pos - pos;
                 pos = l.best_pos;
+                let selected_node = &code_table.nodes[l.best_node as usize];
                 output_code = selected_node.code;
                 if let Some(px) = image.px_at_pos(pos) {
                     if next_code < 0x1000 {
-                        code_table.define(selected_node, px, next_code);
+                        code_table.define(l.best_node, px, next_code);
                         next_code += 1;
                     } else {
                         next_code = 0x1001;
@@ -332,9 +338,9 @@ fn interlaced_line(line: usize, height: usize) -> usize {
     if line > height / 2 {
         line * 2 - (height | 1)
     } else if line > height / 4 {
-        return line * (4) - (height & !(1) | 2);
+        return line * 4 - (height & !1 | 2);
     } else if line > height / 8 {
-        return line * (8) - (height & !(3) | 4);
+        return line * 8 - (height & !3 | 4);
     } else {
         return line * 8;
     }
