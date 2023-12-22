@@ -189,6 +189,19 @@ struct DiffMessage {
     importance_map: Vec<u8>,
 }
 
+struct QuantizeMessage {
+    /// 1.. with holes
+    ordinal_frame_number: usize,
+    /// 0.. no holes
+    frame_index: u32,
+    first_frame_has_transparency: bool,
+    image: ImgVec<RGBA8>,
+    importance_map: Vec<u8>,
+    prev_frame_keeps: bool,
+    dispose: gif::DisposalMethod,
+    end_pts: f64,
+}
+
 /// Frame post quantization, before remap
 struct RemapMessage {
     /// 1..
@@ -780,14 +793,16 @@ impl Writer {
                 };
                 debug_assert!(end_pts > 0.);
 
-                to_remap.send((end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps))?;
+                to_remap.send(QuantizeMessage {
+                    end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps
+                })?;
 
                 frame_index += 1;
                 prev_frame_keeps = dispose == DisposalMethod::Keep;
             }
         }
         Ok(())
-        }, move |(end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps)| {
+        }, move |QuantizeMessage { end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps }| {
             if prev_frame_keeps {
                 // if denoiser says the background didn't change, then believe it
                 // (except higher quality settings, which try to improve it every time)
