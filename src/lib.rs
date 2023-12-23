@@ -217,8 +217,8 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
         return Err(Error::WrongSize("image size too large".into()));
     }
 
-    let max_threads = thread::available_parallelism().map(|t| t.get().min(255) as u8).unwrap_or(8);
-    let (queue, queue_iter) = async_channel::bounded(5.min(max_threads.into())); // should be sufficient for denoiser lookahead
+    let max_threads = thread::available_parallelism().map(|t| t.get()).unwrap_or(8);
+    let (queue, queue_iter) = async_channel::bounded(5.min(max_threads)); // should be sufficient for denoiser lookahead
     Ok((
         Collector {
             queue,
@@ -468,8 +468,7 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    async fn write_frames(mut recv: OrdQueueIter<EncodedFrame>, writer: &mut (dyn Write + Send), settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        // threads = if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }
+    async fn write_frames(mut recv: OrdQueueIter<EncodedFrame>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let mut pts_in_delay_units = 0_u64;
 
         let written = Rc::new(Cell::new(0));
@@ -520,41 +519,43 @@ impl Writer {
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
     #[inline]
-    pub fn write<W: Write>(self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        self.write_inner(&mut writer, reporter)
+    pub fn write<W: Write>(self, mut outfile: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        self.write_inner(&mut outfile, reporter)
     }
 
     #[inline(never)]
     fn write_inner(mut self, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
 
-        let settings_ext = &self.settings;
+        let settings = &self.settings;
         let fixed_colors = self.fixed_colors.as_slice();
         let (diff_queue, diff_queue_recv) = ordqueue::new(1);
         let (quant_queue, quant_queue_recv) = async_channel::bounded(1);
         let (quant2_queue, quant2_queue_recv) = async_channel::bounded(1);
         let (remap_queue, remap_queue_recv) = ordqueue::new(1);
-        let (write_queue, write_queue_recv) = async_channel::bounded(1);
+        let (write_queue, write_queue_recv) = async_channel::bounded(10);
         let (lzw_queue, lzw_recv) = ordqueue::new(1);
+
+        // This is a custom executor designed for blocking CPU-bound "futures"
         let mut e = Executor::new();
 
-        e.add_task("resize", Self::make_resize_par(decode_queue_recv.clone(), diff_queue.clone(), &settings_ext));
-        e.add_task("resize", Self::make_resize_par(decode_queue_recv, diff_queue, &settings_ext));
-        e.add_task("diff", Self::make_diffs(diff_queue_recv, quant_queue, &settings_ext));
+        let mut resize_threads = 3;
+        if settings.s.fast { resize_threads += 1; }
+        else if settings.extra_effort { resize_threads += 2; }
+        if settings.s.width.is_some() || settings.s.height.is_some() { resize_threads += 1; }
+
+        e.add_tasks("resize", resize_threads, move || Self::make_resize_par(decode_queue_recv.clone(), diff_queue.clone(), &settings));
+        e.add_task("diff", Self::make_diffs(diff_queue_recv, quant_queue, &settings));
         e.add_task("disp", Self::select_disposal(quant_queue_recv, quant2_queue));
-        e.add_task("quant", Self::quantize_frames_par(quant2_queue_recv.clone(), remap_queue.clone(), &settings_ext, &fixed_colors));
-        e.add_task("quant", Self::quantize_frames_par(quant2_queue_recv.clone(), remap_queue.clone(), &settings_ext, &fixed_colors));
-        e.add_task("quant", Self::quantize_frames_par(quant2_queue_recv, remap_queue, &settings_ext, &fixed_colors));
+        e.add_tasks("quant", if settings.s.fast || settings.extra_effort { 6 } else { 4 }, move || Self::quantize_frames_par(quant2_queue_recv.clone(), remap_queue.clone(), &settings, &fixed_colors));
         e.add_task("remap", Self::remap_frames(remap_queue_recv, write_queue));
-        e.add_task("lzw", Self::write_frames_par(write_queue_recv.clone(), lzw_queue.clone(), settings_ext));
-        e.add_task("lzw", Self::write_frames_par(write_queue_recv, lzw_queue, settings_ext));
-        e.add_task("gif", Self::write_frames(lzw_recv, writer, &settings_ext, reporter));
-        e.execute_a_bunch()
+        e.add_tasks("lzw", if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }, move || Self::write_frames_par(write_queue_recv.clone(), lzw_queue.clone(), settings));
+        e.add_local_task("gif", Self::write_frames(lzw_recv, writer, &settings, reporter));
+        e.execute_all()
     }
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
     async fn make_resize_par(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
-        // threads = if settings.s.fast || settings.extra_effort { 6 } else { 4 }
         while let Ok(frame) = inputs.recv().await {
             let image = match frame.frame {
                 FrameSource::Pixels(image) => image,
