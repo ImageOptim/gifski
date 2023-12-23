@@ -560,38 +560,32 @@ impl Writer {
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
     fn make_resize(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
-            Ok(())
-        }, move |abort| {
-            for frame in inputs {
-                if abort.load(Relaxed) {
-                    return Err(Error::Aborted);
-                }
-                let image = match frame.frame {
-                    FrameSource::Pixels(image) => image,
-                    #[cfg(feature = "png")]
-                    FrameSource::PngData(data) => {
-                        let image = lodepng::decode32(&data)
-                            .map_err(|err| Error::PNG(format!("Can't load PNG: {err}")))?;
-                        Img::new(image.buffer, image.width, image.height)
-                    },
-                    #[cfg(feature = "png")]
-                    FrameSource::Path(path) => {
-                        let image = lodepng::decode32_file(&path)
-                            .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
-                        Img::new(image.buffer, image.width, image.height)
-                    },
-                };
-                let resized = resized_binary_alpha(image, settings.s.width, settings.s.height, settings.matte)?;
-                let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
-                diff_queue.push(frame.frame_index, InputFrameResized {
-                    frame: resized,
-                    frame_blurred,
-                    presentation_timestamp: frame.presentation_timestamp,
-                })?;
-            }
-            Ok(())
-        })
+        // threads = if settings.s.fast || settings.extra_effort { 6 } else { 4 }
+        for frame in inputs {
+            let image = match frame.frame {
+                FrameSource::Pixels(image) => image,
+                #[cfg(feature = "png")]
+                FrameSource::PngData(data) => {
+                    let image = lodepng::decode32(&data)
+                        .map_err(|err| Error::PNG(format!("Can't load PNG: {err}")))?;
+                    Img::new(image.buffer, image.width, image.height)
+                },
+                #[cfg(feature = "png")]
+                FrameSource::Path(path) => {
+                    let image = lodepng::decode32_file(&path)
+                        .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
+                    Img::new(image.buffer, image.width, image.height)
+                },
+            };
+            let resized = resized_binary_alpha(image, settings.s.width, settings.s.height, settings.matte)?;
+            let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
+            diff_queue.push(frame.frame_index, InputFrameResized {
+                frame: resized,
+                frame_blurred,
+                presentation_timestamp: frame.presentation_timestamp,
+            })?;
+        }
+        Ok(())
     }
 
     /// Find differences between frames, and compute importance maps
