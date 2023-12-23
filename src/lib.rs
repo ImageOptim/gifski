@@ -537,9 +537,13 @@ impl Writer {
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
             Self::make_diffs(diff_queue_recv, quant_queue, &settings_ext)
         })?;
-        let (remap_queue, remap_queue_recv) = ordqueue::new(0);
+        let (quant2_queue, quant2_queue_recv) = crossbeam_channel::bounded(0);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
-            Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext, &self.fixed_colors)
+            Self::quantize_frames(quant_queue_recv, quant2_queue)
+        })?;
+        let (remap_queue, remap_queue_recv) = ordqueue::new(0);
+        let quant_thread2 = thread::Builder::new().name("quant".into()).spawn(move || {
+            Self::quantize_frames_par(quant2_queue_recv, remap_queue, &settings_ext, &self.fixed_colors)
         })?;
         let (write_queue, write_queue_recv) = crossbeam_channel::bounded(0);
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
@@ -549,8 +553,9 @@ impl Writer {
         let res1 = resize_thread.join().map_err(handle_join_error)?;
         let res2 = diff_thread.join().map_err(handle_join_error)?;
         let res3 = quant_thread.join().map_err(handle_join_error)?;
-        let res4 = remap_thread.join().map_err(handle_join_error)?;
-        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
+        let res4 = quant_thread2.join().map_err(handle_join_error)?;
+        let res5 = remap_thread.join().map_err(handle_join_error)?;
+        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), combine_res(res4, res5))
     }
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
@@ -660,8 +665,7 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<()> {
-        minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
+    fn quantize_frames(inputs: Receiver<DiffMessage>, quant_queue: Sender<QuantizeMessage>) -> CatResult<()> {
         let mut inputs = inputs.into_iter();
         let next_frame = inputs.next().ok_or(Error::NoFrames)?;
 
@@ -711,8 +715,8 @@ impl Writer {
                 };
                 debug_assert!(end_pts > 0.);
 
-                to_remap.send(QuantizeMessage {
-                    ordinal_frame_number, frame_index, first_frame_has_transparency, image, importance_map, prev_frame_keeps, dispose, end_pts
+                quant_queue.send(QuantizeMessage {
+                    end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps
                 })?;
 
                 frame_index += 1;
@@ -720,7 +724,10 @@ impl Writer {
             }
         }
         Ok(())
-        }, move |QuantizeMessage { end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps }| {
+    }
+
+    fn quantize_frames_par(inputs: Receiver<QuantizeMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<()> {
+        for QuantizeMessage { end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps } in inputs {
             if prev_frame_keeps {
                 // if denoiser says the background didn't change, then believe it
                 // (except higher quality settings, which try to improve it every time)
@@ -740,8 +747,9 @@ impl Writer {
                 liq, remap,
                 liq_image,
                 out_buf,
-            })
-        })
+            })?;
+        }
+        Ok(())
     }
 
     fn remap_frames(mut inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
