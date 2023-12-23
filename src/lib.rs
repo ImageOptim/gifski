@@ -52,15 +52,13 @@ pub use crate::collector::Collector;
 #[cfg(feature = "gifsicle")]
 mod gifsicle;
 
-mod minipool;
-
 use crossbeam_channel::{Receiver, Sender};
 use std::cell::Cell;
 use std::io::prelude::*;
-use std::num::NonZeroU8;
+
 use std::rc::Rc;
 use std::thread;
-use std::sync::atomic::Ordering::Relaxed;
+
 
 
 /// Number of repetitions
@@ -85,7 +83,6 @@ pub struct Settings {
 #[non_exhaustive]
 struct SettingsExt {
     pub s: Settings,
-    pub max_threads: NonZeroU8,
     pub extra_effort: bool,
     pub motion_quality: u8,
     pub giflossy_quality: u8,
@@ -195,6 +192,14 @@ struct FrameMessage {
     screen_height: u16,
 }
 
+struct EncodedFrame {
+    end_pts: f64,
+    ordinal_frame_number: usize,
+    frame: gif::Frame<'static>,
+    screen_width: u16,
+    screen_height: u16,
+}
+
 /// Start new encoding
 ///
 /// Encoding is multi-threaded, and the `Collector` and `Writer`
@@ -221,7 +226,6 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
             queue_iter: Some(queue_iter),
             settings: SettingsExt {
                 s: settings,
-                max_threads: max_threads.try_into()?,
                 motion_quality: settings.quality,
                 giflossy_quality: settings.quality,
                 extra_effort: false,
@@ -463,55 +467,50 @@ impl Writer {
         Ok((Img::new(pal_img, img.width(), img.height()), pal))
     }
 
-    #[inline(never)]
-    fn write_frames(write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let (send, recv) = ordqueue::new(2);
-        minipool::new_scope((if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
-            let mut pts_in_delay_units = 0_u64;
+    fn write_frames(recv: OrdQueueIter<EncodedFrame>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        // threads = if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }
+        let mut pts_in_delay_units = 0_u64;
 
-            let written = Rc::new(Cell::new(0));
-            let mut enc = RustEncoder::new(writer, written.clone());
+        let written = Rc::new(Cell::new(0));
+        let mut enc = RustEncoder::new(writer, written.clone());
 
-            let mut n_done = 0;
-            for tmp in recv {
-                let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (f64, _, _, _, _) = tmp;
-                let delay = ((end_pts * 100_f64).round() as u64)
-                    .saturating_sub(pts_in_delay_units)
-                    .min(30000) as u16;
-                pts_in_delay_units += u64::from(delay);
+        let mut n_done = 0;
+        for EncodedFrame { end_pts, ordinal_frame_number, frame, screen_width, screen_height } in recv {
+            let delay = ((end_pts * 100_f64).round() as u64)
+                .saturating_sub(pts_in_delay_units)
+                .min(30000) as u16;
+            pts_in_delay_units += u64::from(delay);
 
-                debug_assert_ne!(0, delay);
+            debug_assert_ne!(0, delay);
 
-                // skip frames with bad pts
-                if delay != 0 {
-                    enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
-                }
-
-                // loop to report skipped frames too
-                while n_done < ordinal_frame_number {
-                    n_done += 1;
-                    if !reporter.increase() {
-                        return Err(Error::Aborted);
-                    }
-                }
-                reporter.written_bytes(written.get());
+            // skip frames with bad pts
+            if delay != 0 {
+                enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
             }
-            if n_done == 0 {
-                Err(Error::NoFrames)
-            } else {
-                Ok(())
-            }
-        }, move |abort| {
-            for FrameMessage {frame, frame_index, ordinal_frame_number, end_pts, screen_width, screen_height } in write_queue {
-                if abort.load(Relaxed) {
+
+            // loop to report skipped frames too
+            while n_done < ordinal_frame_number {
+                n_done += 1;
+                if !reporter.increase() {
                     return Err(Error::Aborted);
                 }
-
-                let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, settings)?;
-                send.push(frame_index, (end_pts, ordinal_frame_number, frame, screen_width, screen_height))?;
             }
+            reporter.written_bytes(written.get());
+        }
+        if n_done == 0 {
+            Err(Error::NoFrames)
+        } else {
             Ok(())
-        })
+        }
+    }
+
+    #[inline(never)]
+    fn write_frames_par(write_queue: Receiver<FrameMessage>, send: OrdQueue<EncodedFrame>, settings: &SettingsExt) -> CatResult<()> {
+        for FrameMessage {frame, frame_index, ordinal_frame_number, end_pts, screen_width, screen_height } in write_queue {
+            let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, settings)?;
+            send.push(frame_index, EncodedFrame { end_pts, ordinal_frame_number, frame, screen_width, screen_height })?;
+        }
+        Ok(())
     }
 
     /// Start writing frames. This function will not return until `Collector` is dropped.
@@ -531,7 +530,7 @@ impl Writer {
         let settings_ext = self.settings;
         let (diff_queue, diff_queue_recv) = ordqueue::new(0);
         let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
-            Self::make_resize(decode_queue_recv, diff_queue, &settings_ext)
+            Self::make_resize_par(decode_queue_recv, diff_queue, &settings_ext)
         })?;
         let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(0);
         let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
@@ -539,7 +538,7 @@ impl Writer {
         })?;
         let (quant2_queue, quant2_queue_recv) = crossbeam_channel::bounded(0);
         let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
-            Self::quantize_frames(quant_queue_recv, quant2_queue)
+            Self::select_disposal(quant_queue_recv, quant2_queue)
         })?;
         let (remap_queue, remap_queue_recv) = ordqueue::new(0);
         let quant_thread2 = thread::Builder::new().name("quant".into()).spawn(move || {
@@ -549,17 +548,22 @@ impl Writer {
         let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
             Self::remap_frames(remap_queue_recv, write_queue)
         })?;
-        let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext, reporter);
+        let (lzw_queue, lzw_recv) = ordqueue::new(0);
+        let lzw_thread = thread::Builder::new().name("remap".into()).spawn(move || {
+            Self::write_frames_par(write_queue_recv, lzw_queue, &settings_ext)
+        })?;
+        let res0 = Self::write_frames(lzw_recv, writer, &settings_ext, reporter);
         let res1 = resize_thread.join().map_err(handle_join_error)?;
         let res2 = diff_thread.join().map_err(handle_join_error)?;
         let res3 = quant_thread.join().map_err(handle_join_error)?;
         let res4 = quant_thread2.join().map_err(handle_join_error)?;
         let res5 = remap_thread.join().map_err(handle_join_error)?;
-        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), combine_res(res4, res5))
+        let res6 = lzw_thread.join().map_err(handle_join_error)?;
+        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), combine_res(res4, combine_res(res5, res6)))
     }
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
-    fn make_resize(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_resize_par(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
         // threads = if settings.s.fast || settings.extra_effort { 6 } else { 4 }
         for frame in inputs {
             let image = match frame.frame {
@@ -589,7 +593,7 @@ impl Writer {
     }
 
     /// Find differences between frames, and compute importance maps
-    fn make_diffs(mut inputs: OrdQueueIter<InputFrameResized>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_diffs(mut inputs: OrdQueueIter<InputFrameResized>, diffs: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -648,7 +652,7 @@ impl Writer {
 
             let (importance_map, ..) = importance_map.into_contiguous_buf();
 
-            quant_queue.send(DiffMessage {
+            diffs.send(DiffMessage {
                 importance_map,
                 ordinal_frame_number,
                 image,
@@ -659,7 +663,7 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, quant_queue: Sender<QuantizeMessage>) -> CatResult<()> {
+    fn select_disposal(inputs: Receiver<DiffMessage>, quant_queue: Sender<QuantizeMessage>) -> CatResult<()> {
         let mut inputs = inputs.into_iter();
         let next_frame = inputs.next().ok_or(Error::NoFrames)?;
 
