@@ -54,6 +54,8 @@ use crossbeam_channel::{Receiver, Sender};
 use std::cell::Cell;
 use std::io::prelude::*;
 use std::num::NonZeroU8;
+
+#[cfg(feature = "png")]
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread;
@@ -62,6 +64,8 @@ use std::sync::atomic::Ordering::Relaxed;
 
 enum FrameSource {
     Pixels(ImgVec<RGBA8>),
+    #[cfg(feature = "png")]
+    PngData(Vec<u8>),
     #[cfg(feature = "png")]
     Path(PathBuf),
 }
@@ -260,6 +264,24 @@ impl Collector {
             frame_index,
             frame: FrameSource::Pixels(frame),
             presentation_timestamp,
+        })?;
+        Ok(())
+    }
+
+    /// Decode a frame from in-memory PNG-compressed data.
+    ///
+    /// Frame index starts at 0.
+    ///
+    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
+    ///
+    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
+    #[cfg(feature = "png")]
+    #[inline]
+    pub fn add_frame_png_data(&self, frame_index: usize, png_data: Vec<u8>, presentation_timestamp: f64) -> CatResult<()> {
+        self.queue.send(InputFrameUnresized {
+            frame: FrameSource::PngData(png_data),
+            presentation_timestamp,
+            frame_index,
         })?;
         Ok(())
     }
@@ -614,6 +636,12 @@ impl Writer {
                 }
                 let image = match frame.frame {
                     FrameSource::Pixels(image) => image,
+                    #[cfg(feature = "png")]
+                    FrameSource::PngData(data) => {
+                        let image = lodepng::decode32(&data)
+                            .map_err(|err| Error::PNG(format!("Can't load PNG: {err}")))?;
+                        Img::new(image.buffer, image.width, image.height)
+                    },
                     #[cfg(feature = "png")]
                     FrameSource::Path(path) => {
                         let image = lodepng::decode32_file(&path)
