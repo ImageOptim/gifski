@@ -162,6 +162,8 @@ GifskiError gifski_set_extra_effort(gifski *handle, bool extra);
  *
  * The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
  *
+ * This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
+ *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
 GifskiError gifski_add_frame_png_file(gifski *handle,
@@ -185,6 +187,8 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
  * The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
  *
  * Colors are in sRGB, uncorrelated RGBA, with alpha byte last.
+ *
+ * This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
