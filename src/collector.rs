@@ -16,11 +16,11 @@ pub(crate) enum FrameSource {
     Pixels(ImgVec<RGBA8>),
     #[cfg(feature = "png")]
     PngData(Vec<u8>),
-    #[cfg(feature = "png")]
+    #[cfg(all(feature = "png", not(target_arch = "wasm32")))]
     Path(PathBuf),
 }
 
-pub(crate) struct InputFrameUnresized {
+pub(crate) struct InputFrame {
     /// The pixels to resize and encode
     pub frame: FrameSource,
     /// Time in seconds when to display the frame. First frame should start at 0.
@@ -28,7 +28,7 @@ pub(crate) struct InputFrameUnresized {
     pub frame_index: usize,
 }
 
-pub(crate) struct InputFrame {
+pub(crate) struct InputFrameResized {
     /// The pixels to encode
     pub frame: ImgVec<RGBA8>,
     /// The same as above, but with smart blur applied (for denoiser)
@@ -42,7 +42,7 @@ pub(crate) struct InputFrame {
 /// Note that writing will finish only when the collector is dropped.
 /// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
 pub struct Collector {
-    pub(crate) queue: Sender<InputFrameUnresized>,
+    pub(crate) queue: Sender<InputFrame>,
 }
 
 impl Collector {
@@ -55,7 +55,7 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
         debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.send(InputFrameUnresized {
+        self.queue.send(InputFrame {
             frame_index,
             frame: FrameSource::Pixels(frame),
             presentation_timestamp,
@@ -73,7 +73,7 @@ impl Collector {
     #[cfg(feature = "png")]
     #[inline]
     pub fn add_frame_png_data(&self, frame_index: usize, png_data: Vec<u8>, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrameUnresized {
+        self.queue.send(InputFrame {
             frame: FrameSource::PngData(png_data),
             presentation_timestamp,
             frame_index,
@@ -90,7 +90,7 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     #[cfg(feature = "png")]
     pub fn add_frame_png_file(&self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrameUnresized {
+        self.queue.send(InputFrame {
             frame: FrameSource::Path(path),
             presentation_timestamp,
             frame_index,

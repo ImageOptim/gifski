@@ -45,7 +45,7 @@ mod denoise;
 use crate::denoise::*;
 mod encoderust;
 pub mod collector;
-use crate::collector::{InputFrameUnresized, InputFrame, FrameSource};
+use crate::collector::{InputFrameResized, InputFrame, FrameSource};
 #[doc(inline)]
 pub use crate::collector::Collector;
 
@@ -132,7 +132,7 @@ impl Default for Settings {
 /// Perform GIF writing
 pub struct Writer {
     /// Input frame decoder results
-    queue_iter: Option<Receiver<InputFrameUnresized>>,
+    queue_iter: Option<Receiver<InputFrame>>,
     settings: SettingsExt,
     /// Colors the caller has specified as fixed (i.e. key colours)
     /// This can't be in settings because that would cause it to lose Copy.
@@ -554,7 +554,7 @@ impl Writer {
     }
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
-    fn make_resize(inputs: Receiver<InputFrameUnresized>, diff_queue: OrdQueue<InputFrame>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_resize(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
         minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
             Ok(())
         }, move |abort| {
@@ -579,7 +579,7 @@ impl Writer {
                 };
                 let resized = resized_binary_alpha(image, settings.s.width, settings.s.height, settings.matte)?;
                 let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
-                diff_queue.push(frame.frame_index, InputFrame {
+                diff_queue.push(frame.frame_index, InputFrameResized {
                     frame: resized,
                     frame_blurred,
                     presentation_timestamp: frame.presentation_timestamp,
@@ -590,7 +590,7 @@ impl Writer {
     }
 
     /// Find differences between frames, and compute importance maps
-    fn make_diffs(mut inputs: OrdQueueIter<InputFrame>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_diffs(mut inputs: OrdQueueIter<InputFrameResized>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -619,7 +619,7 @@ impl Writer {
             let curr_frame = next_frame.take();
             next_frame = inputs.next();
 
-            if let Some(InputFrame { frame, frame_blurred, presentation_timestamp: raw_pts }) = curr_frame {
+            if let Some(InputFrameResized { frame, frame_blurred, presentation_timestamp: raw_pts }) = curr_frame {
                 ordinal_frame_number += 1;
 
                 let pts = raw_pts - last_frame_duration.shift_every_pts_by();
