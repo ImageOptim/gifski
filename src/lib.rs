@@ -905,3 +905,10 @@ impl<T> PushInCapacity<T> for Vec<T> {
         }
     }
 }
+
+#[test]
+fn sendable() {
+    fn is_send<T: Send>() {}
+    is_send::<Collector>();
+    is_send::<Writer>();
+}
