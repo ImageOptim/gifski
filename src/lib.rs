@@ -920,9 +920,17 @@ impl<T> PushInCapacity<T> for Vec<T> {
     }
 }
 
+#[cold]
 fn handle_join_error(err: Box<dyn std::any::Any + Send>) -> Error {
     let msg = err.downcast_ref::<String>().map(|s| s.as_str())
     .or_else(|| err.downcast_ref::<&str>().copied()).unwrap_or("unknown panic");
     eprintln!("thread crashed (this is a bug): {msg}");
     Error::ThreadSend
+}
+
+#[test]
+fn sendable() {
+    fn is_send<T: Send>() {}
+    is_send::<Collector>();
+    is_send::<Writer>();
 }
