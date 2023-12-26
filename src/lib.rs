@@ -44,6 +44,10 @@ pub mod c_api;
 mod denoise;
 use crate::denoise::*;
 mod encoderust;
+pub mod collector;
+use crate::collector::{InputFrameUnresized, InputFrame, FrameSource};
+#[doc(inline)]
+pub use crate::collector::Collector;
 
 #[cfg(feature = "gifsicle")]
 mod gifsicle;
@@ -54,37 +58,10 @@ use crossbeam_channel::{Receiver, Sender};
 use std::cell::Cell;
 use std::io::prelude::*;
 use std::num::NonZeroU8;
-
-#[cfg(feature = "png")]
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread;
 use std::sync::atomic::Ordering::Relaxed;
 
-
-enum FrameSource {
-    Pixels(ImgVec<RGBA8>),
-    #[cfg(feature = "png")]
-    PngData(Vec<u8>),
-    #[cfg(feature = "png")]
-    Path(PathBuf),
-}
-struct InputFrameUnresized {
-    /// The pixels to resize and encode
-    frame: FrameSource,
-    /// Time in seconds when to display the frame. First frame should start at 0.
-    presentation_timestamp: f64,
-    frame_index: usize,
-}
-
-struct InputFrame {
-    /// The pixels to encode
-    frame: ImgVec<RGBA8>,
-    /// The same as above, but with smart blur applied (for denoiser)
-    frame_blurred: ImgVec<RGB8>,
-    /// Time in seconds when to display the frame. First frame should start at 0.
-    presentation_timestamp: f64,
-}
 
 /// Number of repetitions
 pub type Repeat = gif::Repeat;
@@ -150,14 +127,6 @@ impl Default for Settings {
             repeat: Repeat::Infinite,
         }
     }
-}
-
-/// Collect frames that will be encoded
-///
-/// Note that writing will finish only when the collector is dropped.
-/// Collect frames on another thread, or call `drop(collector)` before calling `writer.write()`!
-pub struct Collector {
-    queue: Sender<InputFrameUnresized>,
 }
 
 /// Perform GIF writing
@@ -231,7 +200,7 @@ struct FrameMessage {
 /// Encoding is multi-threaded, and the `Collector` and `Writer`
 /// can be used on sepate threads.
 ///
-/// You feed input frames to the `Collector`, and ask the `Writer` to
+/// You feed input frames to the [`Collector`], and ask the [`Writer`] to
 /// start writing the GIF.
 #[inline]
 pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
@@ -261,60 +230,6 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
             fixed_colors: Vec::new(),
         },
     ))
-}
-
-impl Collector {
-    /// Frame index starts at 0.
-    ///
-    /// Set each frame (index) only once, but you can set them in any order.
-    ///
-    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
-    ///
-    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
-    pub fn add_frame_rgba(&self, frame_index: usize, frame: ImgVec<RGBA8>, presentation_timestamp: f64) -> CatResult<()> {
-        debug_assert!(frame_index == 0 || presentation_timestamp > 0.);
-        self.queue.send(InputFrameUnresized {
-            frame_index,
-            frame: FrameSource::Pixels(frame),
-            presentation_timestamp,
-        })?;
-        Ok(())
-    }
-
-    /// Decode a frame from in-memory PNG-compressed data.
-    ///
-    /// Frame index starts at 0.
-    ///
-    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
-    ///
-    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
-    #[cfg(feature = "png")]
-    #[inline]
-    pub fn add_frame_png_data(&self, frame_index: usize, png_data: Vec<u8>, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrameUnresized {
-            frame: FrameSource::PngData(png_data),
-            presentation_timestamp,
-            frame_index,
-        })?;
-        Ok(())
-    }
-
-    /// Read and decode a PNG file from disk.
-    ///
-    /// Frame index starts at 0.
-    ///
-    /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
-    ///
-    /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
-    #[cfg(feature = "png")]
-    pub fn add_frame_png_file(&self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> CatResult<()> {
-        self.queue.send(InputFrameUnresized {
-            frame: FrameSource::Path(path),
-            presentation_timestamp,
-            frame_index,
-        })?;
-        Ok(())
-    }
 }
 
 #[inline(never)]
