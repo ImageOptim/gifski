@@ -208,6 +208,7 @@ impl Acc {
                 };
                 // min == 0 may wipe pixels totally clear, so give them at least a second chance,
                 // if quality setting allows
+                #[allow(overlapping_range_endpoints)]
                 let min = match threshold {
                     0..=300 if self.stayed_for <= 3 => 1, // q >= 75
                     300..=500 if self.stayed_for <= 2 => 1,

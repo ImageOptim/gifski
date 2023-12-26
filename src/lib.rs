@@ -712,7 +712,7 @@ impl Writer {
                 debug_assert!(end_pts > 0.);
 
                 to_remap.send(QuantizeMessage {
-                    end_pts, image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps
+                    ordinal_frame_number, frame_index, first_frame_has_transparency, image, importance_map, prev_frame_keeps, dispose, end_pts
                 })?;
 
                 frame_index += 1;

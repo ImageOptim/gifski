@@ -108,7 +108,7 @@ pub struct GifskiHandleInternal {
 /// Returns a handle for the other functions, or `NULL` on error (if the settings are invalid).
 #[no_mangle]
 pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const GifskiHandle {
-    let settings = if let Some(s) = settings.as_ref() {s} else {
+    let Some(settings) = settings.as_ref() else {
         return ptr::null_mut();
     };
     let s = Settings {
