@@ -59,7 +59,7 @@ binary = ["dep:clap", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
 capi = [] # internal for cargo-c only
 png = ["dep:lodepng"]
 # Links dynamically to ffmpeg. Needs ffmpeg devel package installed on the system.
-video = ["ffmpeg"]
+video = ["dep:ffmpeg"]
 # Builds ffmpeg from source. Needs a C compiler, and all of ffmpeg's source dependencies.
 video-static = ["video", "ffmpeg/build"]
 # If you're lucky, this one might work with ffmpeg from vcpkg.
