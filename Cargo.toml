@@ -42,7 +42,7 @@ crossbeam-utils = "0.8.12"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
-version = "6"
+version = "6.1"
 optional = true
 default-features = false
 features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
