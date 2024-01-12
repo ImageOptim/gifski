@@ -475,17 +475,14 @@ impl Writer {
             let mut n_done = 0;
             for tmp in recv {
                 let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (f64, _, _, _, _) = tmp;
+                // delay=1 doesn't work, and it's too late to drop frames now
                 let delay = ((end_pts * 100_f64).round() as u64)
                     .saturating_sub(pts_in_delay_units)
-                    .min(30000) as u16;
+                    .min(30000).max(2) as u16;
                 pts_in_delay_units += u64::from(delay);
 
-                debug_assert_ne!(0, delay);
+                enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
 
-                // skip frames with bad pts
-                if delay != 0 {
-                    enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
-                }
 
                 // loop to report skipped frames too
                 while n_done < ordinal_frame_number {
