@@ -755,7 +755,6 @@ impl Writer {
 
         let mut next_frame = Some(first_frame);
         while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf, has_next_frame}) = next_frame {
-            next_frame = inputs.next();
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
             let mut screen_after_dispose = screen.dispose();
@@ -768,10 +767,8 @@ impl Writer {
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
             let (left, top) = if frame_index != 0 && has_next_frame {
-                let (left, top, new_width, new_height) = match trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
-                    Some(trimmed) => trimmed,
-                    None => continue, // no pixels need to be changed after dispose
-                };
+                let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels())
+                    .unwrap_or((0, 0, 1, 1));
                 if new_width != image8.width() || new_height != image8.height() {
                     let new_buf = image8.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
                     image8 = ImgVec::new(new_buf, new_width, new_height);
@@ -800,6 +797,7 @@ impl Writer {
                 },
             })?;
             frame_index += 1;
+            next_frame = inputs.next();
         }
         Ok(())
     }
