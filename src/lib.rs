@@ -410,7 +410,7 @@ impl Writer {
     /// `background` is the previous frame.
     fn quantize(&self, image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
         let mut liq = Attributes::new();
-        if self.settings.s.fast {
+        if self.settings.s.fast && !first_frame {
             liq.set_speed(10)?;
         } else if self.settings.extra_effort {
             liq.set_speed(1)?;
