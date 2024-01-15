@@ -483,6 +483,7 @@ impl Writer {
 
                 enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
 
+                reporter.written_bytes(written.get());
 
                 // loop to report skipped frames too
                 while n_done < ordinal_frame_number {
@@ -491,7 +492,6 @@ impl Writer {
                         return Err(Error::Aborted);
                     }
                 }
-                reporter.written_bytes(written.get());
             }
             if n_done == 0 {
                 Err(Error::NoFrames)
