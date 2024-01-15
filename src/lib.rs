@@ -169,6 +169,7 @@ struct QuantizeMessage {
     prev_frame_keeps: bool,
     dispose: gif::DisposalMethod,
     end_pts: f64,
+    has_next_frame: bool,
 }
 
 /// Frame post quantization, before remap
@@ -181,6 +182,7 @@ struct RemapMessage {
     remap: QuantizationResult,
     liq_image: Image<'static>,
     out_buf: Vec<u8>,
+    has_next_frame: bool,
 }
 
 /// Frame post quantization and remap
@@ -709,7 +711,11 @@ impl Writer {
                 debug_assert!(end_pts > 0.);
 
                 to_remap.send(QuantizeMessage {
-                    ordinal_frame_number, frame_index, first_frame_has_transparency, image, importance_map, prev_frame_keeps, dispose, end_pts
+                    image,
+                    ordinal_frame_number, frame_index,
+                    first_frame_has_transparency,
+                    importance_map, prev_frame_keeps, dispose, end_pts,
+                    has_next_frame: next_frame.is_some(),
                 })?;
 
                 frame_index += 1;
@@ -717,7 +723,7 @@ impl Writer {
             }
         }
         Ok(())
-        }, move |QuantizeMessage { end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps }| {
+        }, move |QuantizeMessage { end_pts, mut image, importance_map, ordinal_frame_number, frame_index, dispose, first_frame_has_transparency, prev_frame_keeps, has_next_frame }| {
             if prev_frame_keeps {
                 // if denoiser says the background didn't change, then believe it
                 // (except higher quality settings, which try to improve it every time)
@@ -737,6 +743,7 @@ impl Writer {
                 liq, remap,
                 liq_image,
                 out_buf,
+                has_next_frame,
             })
         })
     }
@@ -747,7 +754,7 @@ impl Writer {
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
 
         let mut next_frame = Some(first_frame);
-        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf}) = next_frame {
+        while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf, has_next_frame}) = next_frame {
             next_frame = inputs.next();
             let screen_width = screen.pixels.width() as u16;
             let screen_height = screen.pixels.height() as u16;
@@ -760,7 +767,7 @@ impl Writer {
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
 
-            let (left, top) = if frame_index != 0 && next_frame.is_some() {
+            let (left, top) = if frame_index != 0 && has_next_frame {
                 let (left, top, new_width, new_height) = match trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels()) {
                     Some(trimmed) => trimmed,
                     None => continue, // no pixels need to be changed after dispose
