@@ -589,7 +589,7 @@ impl Writer {
     }
 
     /// Find differences between frames, and compute importance maps
-    fn make_diffs(&self, mut inputs: OrdQueueIter<InputFrameResized>, quant_queue: Sender<DiffMessage>) -> CatResult<()> {
+    fn make_diffs(&self, mut inputs: OrdQueueIter<InputFrameResized>, diffs: Sender<DiffMessage>) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -602,9 +602,9 @@ impl Writer {
 
         let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), self.settings.motion_quality)?;
 
-        let mut next_frame = Some(first_frame);
         let mut ordinal_frame_number = 0;
         let mut last_frame_pts = 0.;
+        let mut next_frame = Some(first_frame);
         loop {
             // NB! There are two interleaved loops here:
             //  - one to feed the denoiser
@@ -615,10 +615,7 @@ impl Writer {
 
             ////////////////////// Feed denoiser: /////////////////////
 
-            let curr_frame = next_frame.take();
-            next_frame = inputs.next();
-
-            if let Some(InputFrameResized { frame, frame_blurred, presentation_timestamp: raw_pts }) = curr_frame {
+            if let Some(InputFrameResized { frame, frame_blurred, presentation_timestamp: raw_pts }) = next_frame {
                 ordinal_frame_number += 1;
 
                 let pts = raw_pts - last_frame_duration.shift_every_pts_by();
@@ -630,37 +627,36 @@ impl Writer {
                 denoiser.push_frame(frame.as_ref(), frame_blurred.as_ref(), (ordinal_frame_number, pts, last_frame_duration)).map_err(|_| {
                     Error::WrongSize(format!("Frame {ordinal_frame_number} has wrong size ({}×{})", frame.width(), frame.height()))
                 })?;
-                if next_frame.is_none() {
-                    denoiser.flush();
-                }
+            } else {
+                denoiser.flush();
             }
 
             ////////////////////// Consume denoised frames /////////////////////
 
-            let (importance_map, image, (ordinal_frame_number, pts, last_frame_duration)) = match denoiser.pop() {
+            match denoiser.pop() {
                 Denoised::Done => {
-                    debug_assert!(next_frame.is_none());
+                    debug_assert!(inputs.next().is_none());
                     break
                 },
-                Denoised::NotYet => continue,
-                Denoised::Frame { importance_map, frame, meta } => ( importance_map, frame, meta ),
+                Denoised::NotYet => {},
+                Denoised::Frame { importance_map, frame: image, meta: (ordinal_frame_number, pts, last_frame_duration) } => {
+                    let (importance_map, ..) = importance_map.into_contiguous_buf();
+                    diffs.send(DiffMessage {
+                        importance_map,
+                        ordinal_frame_number,
+                        image,
+                        pts, frame_duration: last_frame_duration.value().max(1. / 100.),
+                    })?;
+                },
             };
-
-            let (importance_map, ..) = importance_map.into_contiguous_buf();
-
-            quant_queue.send(DiffMessage {
-                importance_map,
-                ordinal_frame_number,
-                image,
-                pts, frame_duration: last_frame_duration.value().max(1. / 100.),
-            })?;
+            next_frame = inputs.next();
         }
 
         Ok(())
     }
 
     fn quantize_frames(&self, inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>) -> CatResult<()> {
-        minipool::new_channel(self.settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
+        minipool::new_channel(self.settings.max_threads.min(4.try_into()?), "quant", move |quant_queue| {
         let mut inputs = inputs.into_iter();
         let next_frame = inputs.next().ok_or(Error::NoFrames)?;
 
@@ -710,7 +706,7 @@ impl Writer {
                 };
                 debug_assert!(end_pts > 0.);
 
-                to_remap.send(QuantizeMessage {
+                quant_queue.send(QuantizeMessage {
                     image,
                     ordinal_frame_number, frame_index,
                     first_frame_has_transparency,
