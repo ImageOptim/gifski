@@ -408,21 +408,21 @@ impl Writer {
     /// Avoids wasting palette on pixels identical to the background.
     ///
     /// `background` is the previous frame.
-    fn quantize(image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
+    fn quantize(&self, image: ImgVec<RGBA8>, importance_map: &[u8], first_frame: bool, needs_transparency: bool, prev_frame_keeps: bool) -> CatResult<(Attributes, QuantizationResult, Image<'static>, Vec<u8>)> {
         let mut liq = Attributes::new();
-        if settings.s.fast {
+        if self.settings.s.fast {
             liq.set_speed(10)?;
-        } else if settings.extra_effort {
+        } else if self.settings.extra_effort {
             liq.set_speed(1)?;
         }
         let quality = if !first_frame {
-            settings.s.color_quality()
+            self.settings.s.color_quality()
         } else {
             100 // the first frame is too important to ruin it
         };
         liq.set_quality(0, quality)?;
-        if settings.s.quality < 50 {
-            liq.set_max_colors(u32::from(settings.s.quality * 2).max(16).next_power_of_two())?;
+        if self.settings.s.quality < 50 {
+            liq.set_max_colors(u32::from(self.settings.s.quality * 2).max(16).next_power_of_two())?;
         }
         let (buf, width, height) = image.into_contiguous_buf();
         let mut img = liq.new_image(buf, width, height, 0.)?;
@@ -438,12 +438,12 @@ impl Writer {
             img.add_fixed_color(RGBA8::new(0, 0, 0, 0))?;
         }
         // user may have colors which need to be preserved and left undithered
-        for color in fixed_colors {
+        for color in &self.fixed_colors {
             img.add_fixed_color(RGBA8::new(color.r, color.g, color.b, 255))?;
         }
 
         let mut res = liq.quantize(&mut img)?;
-        res.set_dithering_level((f32::from(settings.s.quality) / 50.0 - 1.).max(0.2))?;
+        res.set_dithering_level((f32::from(self.settings.s.quality) / 50.0 - 1.).max(0.2))?;
 
         let mut out = Vec::new();
         out.try_reserve_exact(width*height).map_err(imagequant::liq_error::from)?;
@@ -452,7 +452,7 @@ impl Writer {
         Ok((liq, res, img, out))
     }
 
-    fn remap<'a>(liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, mut pal_img: Vec<u8>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
+    fn remap<'a>(&self, liq: Attributes, mut res: QuantizationResult, mut img: Image<'a>, background: Option<ImgRef<'a, RGBA8>>, mut pal_img: Vec<u8>) -> CatResult<(ImgVec<u8>, Vec<RGBA8>)> {
         if let Some(bg) = background {
             img.set_background(Image::new_stride_borrowed(&liq, bg.buf(), bg.width(), bg.height(), bg.stride(), 0.)?)?;
         }
@@ -464,9 +464,9 @@ impl Writer {
     }
 
     #[inline(never)]
-    fn write_frames(write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, settings: &SettingsExt, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    fn write_frames(&self, write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         let (send, recv) = ordqueue::new(2);
-        minipool::new_scope((if settings.s.fast || settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
+        minipool::new_scope((if self.settings.s.fast || self.settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
             let mut pts_in_delay_units = 0_u64;
 
             let written = Rc::new(Cell::new(0));
@@ -481,7 +481,7 @@ impl Writer {
                     .min(30000).max(2) as u16;
                 pts_in_delay_units += u64::from(delay);
 
-                enc.write_frame(frame, delay, screen_width, screen_height, &settings.s)?;
+                enc.write_frame(frame, delay, screen_width, screen_height, &self.settings.s)?;
 
                 reporter.written_bytes(written.get());
 
@@ -504,7 +504,7 @@ impl Writer {
                     return Err(Error::Aborted);
                 }
 
-                let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, settings)?;
+                let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, &self.settings)?;
                 send.push(frame_index, (end_pts, ordinal_frame_number, frame, screen_width, screen_height))?;
             }
             Ok(())
@@ -517,42 +517,42 @@ impl Writer {
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
     #[inline]
-    pub fn write<W: Write>(self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        self.write_inner(&mut writer, reporter)
+    pub fn write<W: Write>(mut self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
+        self.write_inner(decode_queue_recv, &mut writer, reporter)
     }
 
     #[inline(never)]
-    fn write_inner(mut self, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
-
-        let settings_ext = self.settings;
-        let (diff_queue, diff_queue_recv) = ordqueue::new(0);
-        let resize_thread = thread::Builder::new().name("resize".into()).spawn(move || {
-            Self::make_resize(decode_queue_recv, diff_queue, &settings_ext)
-        })?;
-        let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(0);
-        let diff_thread = thread::Builder::new().name("diff".into()).spawn(move || {
-            Self::make_diffs(diff_queue_recv, quant_queue, &settings_ext)
-        })?;
-        let (remap_queue, remap_queue_recv) = ordqueue::new(0);
-        let quant_thread = thread::Builder::new().name("quant".into()).spawn(move || {
-            Self::quantize_frames(quant_queue_recv, remap_queue, &settings_ext, &self.fixed_colors)
-        })?;
-        let (write_queue, write_queue_recv) = crossbeam_channel::bounded(0);
-        let remap_thread = thread::Builder::new().name("remap".into()).spawn(move || {
-            Self::remap_frames(remap_queue_recv, write_queue)
-        })?;
-        let res0 = Self::write_frames(write_queue_recv, writer, &settings_ext, reporter);
-        let res1 = resize_thread.join().map_err(handle_join_error)?;
-        let res2 = diff_thread.join().map_err(handle_join_error)?;
-        let res3 = quant_thread.join().map_err(handle_join_error)?;
-        let res4 = remap_thread.join().map_err(handle_join_error)?;
-        combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
+    fn write_inner(&self, decode_queue_recv: Receiver<InputFrame>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        thread::scope(|s| {
+            let (diff_queue, diff_queue_recv) = ordqueue::new(0);
+            let resize_thread = thread::Builder::new().name("resize".into()).spawn_scoped(s, move || {
+                self.make_resize(decode_queue_recv, diff_queue)
+            })?;
+            let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(0);
+            let diff_thread = thread::Builder::new().name("diff".into()).spawn_scoped(s, move || {
+                self.make_diffs(diff_queue_recv, quant_queue)
+            })?;
+            let (remap_queue, remap_queue_recv) = ordqueue::new(0);
+            let quant_thread = thread::Builder::new().name("quant".into()).spawn_scoped(s, move || {
+                self.quantize_frames(quant_queue_recv, remap_queue)
+            })?;
+            let (write_queue, write_queue_recv) = crossbeam_channel::bounded(0);
+            let remap_thread = thread::Builder::new().name("remap".into()).spawn_scoped(s, move || {
+                self.remap_frames(remap_queue_recv, write_queue)
+            })?;
+            let res0 = self.write_frames(write_queue_recv, writer, reporter);
+            let res1 = resize_thread.join().map_err(handle_join_error)?;
+            let res2 = diff_thread.join().map_err(handle_join_error)?;
+            let res3 = quant_thread.join().map_err(handle_join_error)?;
+            let res4 = remap_thread.join().map_err(handle_join_error)?;
+            combine_res(combine_res(combine_res(res0, res1), combine_res(res2, res3)), res4)
+        })
     }
 
     /// Apply resizing and crate a blurred version for the diff/denoise phase
-    fn make_resize(inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>, settings: &SettingsExt) -> CatResult<()> {
-        minipool::new_scope(settings.max_threads.min(if settings.s.fast || settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
+    fn make_resize(&self, inputs: Receiver<InputFrame>, diff_queue: OrdQueue<InputFrameResized>) -> CatResult<()> {
+        minipool::new_scope(self.settings.max_threads.min(if self.settings.s.fast || self.settings.extra_effort { 6 } else { 4 }.try_into()?), "resize", move || {
             Ok(())
         }, move |abort| {
             for frame in inputs {
@@ -574,8 +574,8 @@ impl Writer {
                         Img::new(image.buffer, image.width, image.height)
                     },
                 };
-                let resized = resized_binary_alpha(image, settings.s.width, settings.s.height, settings.matte)?;
-                let frame_blurred = if settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
+                let resized = resized_binary_alpha(image, self.settings.s.width, self.settings.s.height, self.settings.matte)?;
+                let frame_blurred = if self.settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
                 diff_queue.push(frame.frame_index, InputFrameResized {
                     frame: resized,
                     frame_blurred,
@@ -587,7 +587,7 @@ impl Writer {
     }
 
     /// Find differences between frames, and compute importance maps
-    fn make_diffs(mut inputs: OrdQueueIter<InputFrameResized>, quant_queue: Sender<DiffMessage>, settings: &SettingsExt) -> CatResult<()> {
+    fn make_diffs(&self, mut inputs: OrdQueueIter<InputFrameResized>, quant_queue: Sender<DiffMessage>) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -598,7 +598,7 @@ impl Writer {
             LastFrameDuration::FrameRate(0.)
         };
 
-        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), settings.motion_quality)?;
+        let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), self.settings.motion_quality)?;
 
         let mut next_frame = Some(first_frame);
         let mut ordinal_frame_number = 0;
@@ -657,8 +657,8 @@ impl Writer {
         Ok(())
     }
 
-    fn quantize_frames(inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>, settings: &SettingsExt, fixed_colors: &[RGB8]) -> CatResult<()> {
-        minipool::new_channel(settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
+    fn quantize_frames(&self, inputs: Receiver<DiffMessage>, remap_queue: OrdQueue<RemapMessage>) -> CatResult<()> {
+        minipool::new_channel(self.settings.max_threads.min(4.try_into()?), "quant", move |to_remap| {
         let mut inputs = inputs.into_iter();
         let next_frame = inputs.next().ok_or(Error::NoFrames)?;
 
@@ -721,14 +721,14 @@ impl Writer {
             if prev_frame_keeps {
                 // if denoiser says the background didn't change, then believe it
                 // (except higher quality settings, which try to improve it every time)
-                let bg_keep_likelihood = u32::from(settings.s.quality.saturating_sub(80) / 4);
-                if settings.s.fast || (settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood) {
+                let bg_keep_likelihood = u32::from(self.settings.s.quality.saturating_sub(80) / 4);
+                if self.settings.s.fast || (self.settings.s.quality < 100 && (frame_index % 5) >= bg_keep_likelihood) {
                     image.pixels_mut().zip(&importance_map).filter(|&(_, &m)| m == 0).for_each(|(px, _)| *px = RGBA8::new(0,0,0,0));
                 }
             }
 
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
-            let (liq, remap, liq_image, out_buf) = Self::quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps, settings, fixed_colors)?;
+            let (liq, remap, liq_image, out_buf) = self.quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps)?;
 
             remap_queue.push(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
@@ -741,7 +741,7 @@ impl Writer {
         })
     }
 
-    fn remap_frames(mut inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
+    fn remap_frames(&self, mut inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
         let mut frame_index = 0;
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
@@ -755,7 +755,7 @@ impl Writer {
 
             let (mut image8, mut image8_pal) = {
                 let bg = if frame_index != 0 { Some(screen_after_dispose.pixels()) } else { None };
-                Self::remap(liq, remap, liq_image, bg, out_buf)?
+                self.remap(liq, remap, liq_image, bg, out_buf)?
             };
 
             let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
