@@ -4,7 +4,7 @@ description: |
    GIF encoder based on libimagequant (pngquant).
    Squeezes maximum possible quality from the awful
    GIF format. https://gif.ski
-version: 1.13.1
+version: 1.14.0
 
 base: core20
 confinement: strict
