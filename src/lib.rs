@@ -144,7 +144,7 @@ struct GIFFrame {
     left: u16,
     top: u16,
     image: ImgVec<u8>,
-    pal: Vec<RGBA8>,
+    pal: Vec<RGB8>,
     dispose: DisposalMethod,
     transparent_index: Option<u8>,
 }
@@ -424,7 +424,8 @@ impl Writer {
         };
         liq.set_quality(0, quality)?;
         if self.settings.s.quality < 50 {
-            liq.set_max_colors(u32::from(self.settings.s.quality * 2).max(16).next_power_of_two())?;
+            let min_colors = 5 + self.fixed_colors.len() as u32;
+            liq.set_max_colors(u32::from(self.settings.s.quality * 2).max(min_colors).next_power_of_two().min(256))?;
         }
         let (buf, width, height) = image.into_contiguous_buf();
         let mut img = liq.new_image(buf, width, height, 0.)?;
@@ -759,23 +760,24 @@ impl Writer {
     fn remap_frames(&self, mut inputs: OrdQueueIter<RemapMessage>, write_queue: Sender<FrameMessage>) -> CatResult<()> {
         let mut frame_index = 0;
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
-        let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), RGBA8::new(0, 0, 0, 0), None);
+        let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), None);
 
         let mut next_frame = Some(first_frame);
         while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf, has_next_frame}) = next_frame {
-            let screen_width = screen.pixels.width() as u16;
-            let screen_height = screen.pixels.height() as u16;
-            let mut screen_after_dispose = screen.dispose();
+            let pixels = screen.pixels_rgba();
+            let screen_width = pixels.width() as u16;
+            let screen_height = pixels.height() as u16;
+            let mut screen_after_dispose = screen.dispose_only();
 
-            let (mut image8, mut image8_pal) = {
-                let bg = if frame_index != 0 { Some(screen_after_dispose.pixels()) } else { None };
+            let (mut image8, image8_pal) = {
+                let bg = if frame_index != 0 { Some(screen_after_dispose.pixels_rgba()) } else { None };
                 self.remap(liq, remap, liq_image, bg, out_buf)?
             };
 
-            let transparent_index = transparent_index_from_palette(&mut image8_pal, image8.as_mut());
+            let (image8_pal, transparent_index) = transparent_index_from_palette(image8_pal, image8.as_mut());
 
             let (left, top) = if frame_index != 0 && has_next_frame {
-                let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels())
+                let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels_rgba())
                     .unwrap_or((0, 0, 1, 1));
                 if new_width != image8.width() || new_height != image8.height() {
                     let new_buf = image8.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
@@ -811,12 +813,12 @@ impl Writer {
     }
 }
 
-fn transparent_index_from_palette(image8_pal: &mut [RGBA<u8>], mut image8: ImgRefMut<u8>) -> Option<u8> {
+fn transparent_index_from_palette(mut image8_pal: Vec<RGBA8>, mut image8: ImgRefMut<u8>) -> (Vec<RGB8>, Option<u8>) {
     // Palette may have multiple transparent indices :(
     let mut transparent_index = None;
     for (i, p) in image8_pal.iter_mut().enumerate() {
         if p.a <= 128 {
-            p.a = 0;
+            *p = RGBA8::new(71,80,76,0);
             let new_index = i as u8;
             if let Some(old_index) = transparent_index {
                 image8.pixels_mut().filter(|px| **px == new_index).for_each(|px| *px = old_index);
@@ -831,7 +833,7 @@ fn transparent_index_from_palette(image8_pal: &mut [RGBA<u8>], mut image8: ImgRe
         Some(idx as u8) == transparent_index || color.a > 128 || !image8.pixels().any(|px| px == idx as u8)
     }));
 
-    transparent_index
+    (image8_pal.into_iter().map(|r| r.rgb()).collect(), transparent_index)
 }
 
 /// When one thread unexpectedly fails, all other threads fail with Aborted, but that Aborted isn't the relevant cause
@@ -847,7 +849,7 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGBA8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
+fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
     let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
         if Some(px) == transparent_index {
             if dispose == DisposalMethod::Keep {
@@ -858,7 +860,7 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGBA8], transparent_i
                 bg.a == 0
             }
         } else {
-            image8_pal.get(px as usize).copied().unwrap_or_default() == bg
+            image8_pal.get(px as usize).map(|px| px.alpha(255)).unwrap_or_default() == bg
         }
     };
 

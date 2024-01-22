@@ -95,7 +95,7 @@ fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(&gif::Frame, ImgRef<RG
 
     while let Some(frame) = decoder.read_next_frame().unwrap() {
         screen.blit_frame(frame).unwrap();
-        cb(frame, screen.pixels.as_ref());
+        cb(frame, screen.pixels_rgba());
     }
 }
 
