@@ -445,6 +445,18 @@ impl Writer {
         }
 
         let mut res = liq.quantize(&mut img)?;
+
+        // GIF only stores power-of-two palette sizes
+        if self.settings.extra_effort {
+            let len = res.palette_len();
+            // it has little impact on compression (128c -> 64c is only 7% smaller)
+            if (len < 128 || len > 220) && len != len.next_power_of_two() {
+                liq.set_max_colors(len.next_power_of_two() as _)?;
+                liq.set_quality(0, 100)?;
+                res = liq.quantize(&mut img)?;
+            }
+        }
+
         res.set_dithering_level((f32::from(self.settings.s.quality) / 50.0 - 1.).max(0.2))?;
 
         let mut out = Vec::new();
