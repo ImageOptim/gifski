@@ -39,6 +39,7 @@ loop9 = "0.1.5"
 # noisy-float 0.2 bug
 num-traits = { version = "0.2.17", features = ["i128", "std"] }
 crossbeam-utils = "0.8.19"
+ordered-channel = { version = "1.0.0", features = ["crossbeam-channel"] }
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"

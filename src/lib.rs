@@ -36,8 +36,9 @@ use rgb::*;
 
 mod error;
 pub use crate::error::*;
-mod ordqueue;
-use crate::ordqueue::{OrdQueue, OrdQueueIter};
+use ordered_channel::Sender as OrdQueue;
+use ordered_channel::Receiver as OrdQueueIter;
+use ordered_channel::bounded as ordqueue_new;
 pub mod progress;
 use crate::progress::*;
 pub mod c_api;
@@ -480,7 +481,7 @@ impl Writer {
 
     #[inline(never)]
     fn write_frames(&self, write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
-        let (send, recv) = ordqueue::new(2);
+        let (lzw_queue, lzw_recv) = ordqueue_new(2);
         minipool::new_scope((if self.settings.s.fast || self.settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
             let mut pts_in_delay_units = 0_u64;
 
@@ -488,7 +489,7 @@ impl Writer {
             let mut enc = RustEncoder::new(writer, written.clone());
 
             let mut n_done = 0;
-            for tmp in recv {
+            for tmp in lzw_recv {
                 let (end_pts, ordinal_frame_number, frame, screen_width, screen_height): (f64, _, _, _, _) = tmp;
                 // delay=1 doesn't work, and it's too late to drop frames now
                 let delay = ((end_pts * 100_f64).round() as u64)
@@ -520,7 +521,7 @@ impl Writer {
                 }
 
                 let frame = RustEncoder::<&mut dyn std::io::Write>::compress_frame(frame, &self.settings)?;
-                send.push(frame_index, (end_pts, ordinal_frame_number, frame, screen_width, screen_height))?;
+                lzw_queue.send(frame_index, (end_pts, ordinal_frame_number, frame, screen_width, screen_height))?;
             }
             Ok(())
         })
@@ -540,7 +541,7 @@ impl Writer {
     #[inline(never)]
     fn write_inner(&self, decode_queue_recv: Receiver<InputFrame>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
         thread::scope(|s| {
-            let (diff_queue, diff_queue_recv) = ordqueue::new(0);
+            let (diff_queue, diff_queue_recv) = ordqueue_new(0);
             let resize_thread = thread::Builder::new().name("resize".into()).spawn_scoped(s, move || {
                 self.make_resize(decode_queue_recv, diff_queue)
             })?;
@@ -548,7 +549,7 @@ impl Writer {
             let diff_thread = thread::Builder::new().name("diff".into()).spawn_scoped(s, move || {
                 self.make_diffs(diff_queue_recv, quant_queue)
             })?;
-            let (remap_queue, remap_queue_recv) = ordqueue::new(0);
+            let (remap_queue, remap_queue_recv) = ordqueue_new(0);
             let quant_thread = thread::Builder::new().name("quant".into()).spawn_scoped(s, move || {
                 self.quantize_frames(quant_queue_recv, remap_queue)
             })?;
@@ -591,7 +592,7 @@ impl Writer {
                 };
                 let resized = resized_binary_alpha(image, self.settings.s.width, self.settings.s.height, self.settings.matte)?;
                 let frame_blurred = if self.settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
-                diff_queue.push(frame.frame_index, InputFrameResized {
+                diff_queue.send(frame.frame_index, InputFrameResized {
                     frame: resized,
                     frame_blurred,
                     presentation_timestamp: frame.presentation_timestamp,
@@ -745,7 +746,7 @@ impl Writer {
             let needs_transparency = frame_index > 0 || (frame_index == 0 && first_frame_has_transparency);
             let (liq, remap, liq_image, out_buf) = self.quantize(image, &importance_map, frame_index == 0, needs_transparency, prev_frame_keeps)?;
 
-            remap_queue.push(frame_index as usize, RemapMessage {
+            Ok(remap_queue.send(frame_index as usize, RemapMessage {
                 ordinal_frame_number,
                 end_pts,
                 dispose,
@@ -753,7 +754,7 @@ impl Writer {
                 liq_image,
                 out_buf,
                 has_next_frame,
-            })
+            })?)
         })
     }
 

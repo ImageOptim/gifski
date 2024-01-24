@@ -324,6 +324,7 @@ dependencies = [
  "loop9",
  "natord",
  "num-traits",
+ "ordered-channel",
  "pbr",
  "quick-error",
  "resize",
@@ -482,6 +483,15 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
+
+[[package]]
+name = "ordered-channel"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dd66e3218b7ee8b7c17275f8327121b9c43b29b3e9d2f812d0aa48105fd7e8d"
+dependencies = [
+ "crossbeam-channel",
+]
 
 [[package]]
 name = "pbr"
