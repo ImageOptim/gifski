@@ -778,7 +778,7 @@ impl Writer {
             let (image8_pal, transparent_index) = transparent_index_from_palette(image8_pal, image8.as_mut());
 
             let (left, top) = if frame_index != 0 && has_next_frame {
-                let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels_rgba())
+                let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, screen_after_dispose.pixels_rgba())
                     .unwrap_or((0, 0, 1, 1));
                 if new_width != image8.width() || new_height != image8.height() {
                     let new_buf = image8.sub_image(left.into(), top.into(), new_width, new_height).to_contiguous_buf().0.into_owned();
@@ -850,16 +850,11 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
     }
 }
 
-fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
+fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_index: Option<u8>, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
     let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
         if Some(px) == transparent_index {
-            if dispose == DisposalMethod::Keep {
-                // if dispose == keep, then transparent pixels do nothing, so they can be cropped out
-                true
-            } else {
-                // if disposing to background, then transparent pixels paint transparency, so bg has to actually be transparent to match
-                bg.a == 0
-            }
+            // the bg image is in an after-dispose state, so no need to handle disposal here
+            true
         } else {
             image8_pal.get(px as usize).map(|px| px.alpha(255)).unwrap_or_default() == bg
         }
