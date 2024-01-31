@@ -304,6 +304,7 @@ impl GiflossyWriter {
 
 impl<'a> GiflossyImage<'a> {
     #[must_use]
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn new(
         img: &'a [u8],
         width: u16,

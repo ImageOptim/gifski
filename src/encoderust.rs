@@ -49,6 +49,7 @@ impl<W: Write> RustEncoder<W> {
 
 impl<W: Write> RustEncoder<W> {
     #[inline(never)]
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn compress_frame(f: GIFFrame, settings: &SettingsExt) -> CatResult<gif::Frame<'static>> {
         let GIFFrame {left, top, pal, image, dispose, transparent_index} = f;
 

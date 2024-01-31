@@ -236,6 +236,7 @@ pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
 }
 
 #[inline(never)]
+#[cfg_attr(debug_assertions, track_caller)]
 fn resized_binary_alpha(image: ImgVec<RGBA8>, width: Option<u32>, height: Option<u32>, matte: Option<RGB8>) -> CatResult<ImgVec<RGBA8>> {
     let (width, height) = dimensions_for_image((image.width(), image.height()), (width, height));
 
@@ -921,8 +922,8 @@ trait PushInCapacity<T> {
 }
 
 impl<T> PushInCapacity<T> for Vec<T> {
-    #[track_caller]
     #[inline(always)]
+    #[cfg_attr(debug_assertions, track_caller)]
     fn push_in_cap(&mut self, val: T) {
         debug_assert!(self.capacity() != self.len());
         if self.capacity() != self.len() {
