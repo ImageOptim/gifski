@@ -179,6 +179,8 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
  *
  * `frame_number` orders frames (consecutive numbers starting from 0).
  * You can add frames in any order, and they will be sorted by their `frame_number`.
+ * However, out-of-order frames are buffered in RAM, and will cause high memory usage
+ * if there are gaps in the frame numbers.
  *
  * Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
  * For a 20fps video it could be `frame_number/20.0`. First frame must have PTS=0.

@@ -48,7 +48,8 @@ pub struct Collector {
 impl Collector {
     /// Frame index starts at 0.
     ///
-    /// Set each frame (index) only once, but you can set them in any order.
+    /// Set each frame (index) only once, but you can set them in any order. However, out-of-order frames
+    /// will be buffered in RAM, and big gaps in frame indices will cause high memory usage.
     ///
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
     ///
@@ -66,6 +67,8 @@ impl Collector {
     /// Decode a frame from in-memory PNG-compressed data.
     ///
     /// Frame index starts at 0.
+    /// Set each frame (index) only once, but you can set them in any order. However, out-of-order frames
+    /// will be buffered in RAM, and big gaps in frame indices will cause high memory usage.
     ///
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
     ///
@@ -84,6 +87,7 @@ impl Collector {
     /// Read and decode a PNG file from disk.
     ///
     /// Frame index starts at 0.
+    /// Set each frame (index) only once, but you can set them in any order.
     ///
     /// Presentation timestamp is time in seconds (since file start at 0) when this frame is to be displayed.
     ///
