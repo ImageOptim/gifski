@@ -10,7 +10,7 @@ license = "AGPL-3.0-or-later"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "1.14.1"
+version = "1.14.2"
 autobins = false
 edition = "2021"
 rust-version = "1.65"
@@ -23,7 +23,7 @@ required-features = ["binary"]
 [dependencies]
 clap = { version = "4.3.24", features = ["cargo"], optional = true }
 imgref = "1.10.0"
-gif = { version = "0.13", default-features = false, features = ["std", "raii_no_panic"] }
+gif = { version = "0.13.1", default-features = false, features = ["std", "raii_no_panic"] }
 gif-dispose = "5.0.0-beta.2"
 imagequant = "4.3.0"
 lodepng = { version = "3.10.1", optional = true }
