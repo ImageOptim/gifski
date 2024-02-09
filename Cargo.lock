@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.14.3"
+version = "1.14.4"
 dependencies = [
  "clap",
  "crossbeam-channel",
