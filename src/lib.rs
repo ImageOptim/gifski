@@ -926,7 +926,7 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
     debug_assert_eq!(image_trimmed.width(), screen.width());
     debug_assert_eq!(image_trimmed.height(), screen.height());
 
-    let right = (0..image_trimmed.width()-1).rev()
+    let right = (1..image_trimmed.width()).rev()
         .take_while(|&x| {
             (0..image_trimmed.height()).all(|y| {
                 let px = image_trimmed[(x, y)];
