@@ -861,6 +861,9 @@ fn combine_res(res1: Result<(), Error>, res2: Result<(), Error>) -> Result<(), E
 }
 
 fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_index: Option<u8>, dispose: DisposalMethod, mut screen: ImgRef<RGBA8>) -> Option<(u16, u16, usize, usize)> {
+    debug_assert_eq!(image_trimmed.width(), screen.width());
+    debug_assert_eq!(image_trimmed.height(), screen.height());
+
     let is_matching_pixel = move |px: u8, bg: RGBA8| -> bool {
         if Some(px) == transparent_index {
             if dispose == DisposalMethod::Keep {
@@ -872,7 +875,10 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
                 bg.a == 0
             }
         } else {
-            let Some(pal_px) = image8_pal.get(px as usize) else { return false };
+            let Some(pal_px) = image8_pal.get(px as usize) else {
+                debug_assert!(false, "{px} > {}", image8_pal.len());
+                return false
+            };
             pal_px.alpha(255) == bg
         }
     };
@@ -917,6 +923,8 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
         image_trimmed = image_trimmed.sub_image(left, 0, image_trimmed.width() - left, image_trimmed.height());
         screen = screen.sub_image(left, 0, screen.width() - left, screen.height());
     }
+    debug_assert_eq!(image_trimmed.width(), screen.width());
+    debug_assert_eq!(image_trimmed.height(), screen.height());
 
     let right = (0..image_trimmed.width()-1).rev()
         .take_while(|&x| {

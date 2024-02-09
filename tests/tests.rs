@@ -8,11 +8,11 @@ use gifski::{Settings, new, progress};
 #[test]
 fn n_frames() {
     for num_frames in 1..=11 {
-        assert_anim_eq(num_frames, frame_filename, None);
+        assert_anim_eq(num_frames, frame_filename, None, 0.8);
     }
 }
 
-fn assert_anim_eq(num_frames: usize, frame_filename: fn(usize) -> PathBuf, frame_edit: Option<fn(ImgRefMut<RGBA8>)>) {
+fn assert_anim_eq(num_frames: usize, frame_filename: fn(usize) -> PathBuf, frame_edit: Option<fn(usize, ImgRefMut<RGBA8>)>, max_diff: f64) {
     let (c, w) = new(Settings::default()).unwrap();
 
     let t = std::thread::spawn(move || {
@@ -21,7 +21,7 @@ fn assert_anim_eq(num_frames: usize, frame_filename: fn(usize) -> PathBuf, frame
             let name = frame_filename(n);
             if let Some(frame_edit) = frame_edit {
                 let mut frame = load_frame(&name);
-                frame_edit(frame.as_mut());
+                frame_edit(n, frame.as_mut());
                 c.add_frame_rgba(n, frame, pts).unwrap();
             } else {
                 c.add_frame_png_file(n, name, pts).unwrap();
@@ -33,6 +33,8 @@ fn assert_anim_eq(num_frames: usize, frame_filename: fn(usize) -> PathBuf, frame
     w.write(&mut out, &mut progress::NoProgress {}).unwrap();
     t.join().unwrap();
 
+    // std::fs::write(format!("/tmp/anim{num_frames}{max_diff}{}.png", frame_edit.is_some()), &out);
+
     let mut n = 0;
     let mut frames_seen = 0;
     for_each_frame(&out, |delay, _, actual| {
@@ -42,9 +44,9 @@ fn assert_anim_eq(num_frames: usize, frame_filename: fn(usize) -> PathBuf, frame
             let name = frame_filename(n);
             let mut expected = load_frame(&name);
             if let Some(frame_edit) = frame_edit {
-                frame_edit(expected.as_mut());
+                frame_edit(n, expected.as_mut());
             }
-            assert_images_eq(expected.as_ref(), actual, 0.8, format_args!("n={n}/{num_frames}, {delay}/{next_n}, {}", name.display()));
+            assert_images_eq(expected.as_ref(), actual, max_diff, format_args!("n={n}/{num_frames}, {delay}/{next_n}, {}", name.display()));
             n += 1;
         }
     });
@@ -129,46 +131,85 @@ fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(u32, &gif::Frame, ImgR
 
 
 #[test]
+fn anim3() {
+    assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), None, 0.8);
+}
+
+#[test]
+fn anim3_transparent1() {
+    assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), Some(|_,mut fr| {
+        fr.pixels_mut().for_each(|px| if px.r == 0 && px.g == 0 { px.a = 0; })
+    }), 0.8);
+}
+
+#[test]
+fn anim3_transparent2() {
+    assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), Some(|_,mut fr| {
+        fr.pixels_mut().for_each(|px| if px.r != 0 { px.a = 0; })
+    }), 0.8);
+}
+
+#[test]
+fn anim3_twitch() {
+    assert_anim_eq(6*3*3, |x| {
+        let n = (x/3) ^ (x&1);
+        format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into()
+    }, None, 0.8);
+}
+
+#[test]
+fn anim3_mix() {
+    assert_anim_eq(6*3*3, |x| {
+        let n = (x/3) ^ (x&3);
+        format!("tests/a3/{}{}.png", ["x","y","z"][(n/6)%3], n%6).into()
+    }, Some(|n, mut fr| {
+        fr.pixels_mut().take(12).for_each(|px| {
+            px.g = px.g.wrapping_add(n as _);
+        });
+    }), 2.);
+}
+
+#[test]
 fn anim2_fwd() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), None);
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_rev() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), None);
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_dupes() {
-    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", 1+n/2).into(), None);
+    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", 1+n/2).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_flips() {
-    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", if n&1==0 { 10 } else { 1+n/2 }).into(), None);
+    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", if n&1==0 { 10 } else { 1+n/2 }).into(), None, 0.8);
 }
 
 
 #[test]
 fn anim2_transparent() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), Some(|mut fr| {
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), Some(|_, mut fr| {
         fr.pixels_mut().for_each(|px| if px.r > 128 { px.a = 0; })
-    }));
+    }), 0.8);
 }
 
 #[test]
 fn anim2_transparent2() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|mut fr| {
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|_, mut fr| {
         fr.pixels_mut().for_each(|px| if px.g > 200 { px.a = 0; })
-    }));
+    }), 0.8);
 }
 
 #[test]
 fn anim2_transparent_half() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|mut fr| {
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|_, mut fr| {
         let n = fr.width()*(fr.height()/2);
         fr.pixels_mut().skip(n).for_each(|px| if px.g > 200 { px.a = 0; })
-    }));
+    }), 0.8);
 }
 
 #[track_caller]
