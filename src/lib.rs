@@ -764,6 +764,9 @@ impl Writer {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
         let mut screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), None);
 
+        #[cfg(debug_assertions)]
+        let mut debug_screen = gif_dispose::Screen::new(first_frame.liq_image.width(), first_frame.liq_image.height(), None);
+
         let mut next_frame = Some(first_frame);
         while let Some(RemapMessage {ordinal_frame_number, end_pts, dispose, liq, remap, liq_image, out_buf, has_next_frame}) = next_frame {
             let pixels = screen.pixels_rgba();
@@ -777,6 +780,9 @@ impl Writer {
             };
 
             let (image8_pal, transparent_index) = transparent_index_from_palette(image8_pal, image8.as_mut());
+
+            #[cfg(debug_assertions)]
+            debug_screen.blit(Some(&image8_pal), dispose, 0, 0, image8.as_ref(), transparent_index)?;
 
             let (left, top) = if frame_index != 0 && has_next_frame {
                 let (left, top, new_width, new_height) = trim_image(image8.as_ref(), &image8_pal, transparent_index, dispose, screen_after_dispose.pixels_rgba())
@@ -792,6 +798,9 @@ impl Writer {
             };
 
             screen_after_dispose.then_blit(Some(&image8_pal), dispose, left, top, image8.as_ref(), transparent_index)?;
+
+            #[cfg(debug_assertions)]
+            debug_assert!(debug_screen.pixels_rgba() == screen.pixels_rgba(), "fr {ordinal_frame_number} {left}/{top} {}x{}", image8.width(), image8.height());
 
             write_queue.send(FrameMessage {
                 frame_index,
@@ -858,11 +867,13 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
                 // if dispose == keep, then transparent pixels do nothing, so they can be cropped out
                 true
             } else {
+                debug_assert_eq!(dispose, DisposalMethod::Background);
                 // if disposing to background, then transparent pixels paint transparency, so bg has to actually be transparent to match
                 bg.a == 0
             }
         } else {
-            image8_pal.get(px as usize).map(|px| px.alpha(255)).unwrap_or_default() == bg
+            let Some(pal_px) = image8_pal.get(px as usize) else { return false };
+            pal_px.alpha(255) == bg
         }
     };
 
@@ -902,20 +913,20 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
             })
         }).count();
     if left > 0 {
-        debug_assert_ne!(image_trimmed.width(), left);
+        debug_assert!(image_trimmed.width() > left);
         image_trimmed = image_trimmed.sub_image(left, 0, image_trimmed.width() - left, image_trimmed.height());
+        screen = screen.sub_image(left, 0, screen.width() - left, screen.height());
     }
 
-    let right = (1..image_trimmed.width())
+    let right = (0..image_trimmed.width()-1).rev()
         .take_while(|&x| {
-            let x = image_trimmed.width()-x;
             (0..image_trimmed.height()).all(|y| {
                 let px = image_trimmed[(x, y)];
                 is_matching_pixel(px, screen[(x, y)])
             })
         }).count();
     if right > 0 {
-        debug_assert_ne!(image_trimmed.width(), right);
+        debug_assert!(image_trimmed.width() > right);
         image_trimmed = image_trimmed.sub_image(0, 0, image_trimmed.width() - right, image_trimmed.height());
     }
 
