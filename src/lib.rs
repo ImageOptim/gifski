@@ -15,6 +15,10 @@
  You should have received a copy of the GNU Affero General Public License
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+//! gif.ski library allows creation of GIF animations from [arbitrary pixels][ImgVec],
+//! or [PNG files][Collector::add_frame_png_file].
+//!
+//! See the [`new`] function to get started.
 #![doc(html_logo_url = "https://gif.ski/icon.png")]
 #![allow(clippy::bool_to_int_with_if)]
 #![allow(clippy::cast_possible_truncation)]
@@ -198,13 +202,35 @@ struct FrameMessage {
     screen_height: u16,
 }
 
-/// Start new encoding
+/// Start new encoding on two threads.
 ///
-/// Encoding is multi-threaded, and the `Collector` and `Writer`
-/// can be used on sepate threads.
+/// Encoding is always multi-threaded, and the `Collector` and `Writer`
+/// must be used on sepate threads.
 ///
 /// You feed input frames to the [`Collector`], and ask the [`Writer`] to
 /// start writing the GIF.
+///
+/// If you don't start writing, then adding frames will block forever.
+///
+///
+/// ```rust,no_run
+/// use gifski::*;
+///
+/// let (collector, writer) = gifski::new(Settings::default())?;
+/// std::thread::scope(|t| -> Result<(), Error> {
+///     let frames_thread = t.spawn(move || {
+///         for i in 0..10 {
+///             collector.add_frame_png_file(i, format!("frame{i:04}.png").into(), i as f64 * 0.1)?;
+///         }
+///         drop(collector);
+///         Ok(())
+///     });
+///
+///     writer.write(std::fs::File::create("demo.gif")?, &mut progress::NoProgress{})?;
+///     frames_thread.join().unwrap()
+/// })?;
+/// Ok::<_, Error>(())
+/// ```
 #[inline]
 pub fn new(settings: Settings) -> GifResult<(Collector, Writer)> {
     if settings.quality == 0 || settings.quality > 100 {
@@ -528,7 +554,7 @@ impl Writer {
         })
     }
 
-    /// Start writing frames. This function will not return until `Collector` is dropped.
+    /// Start writing frames. This function will not return until the [`Collector`] is dropped.
     ///
     /// `outfile` can be any writer, such as `File` or `&mut Vec`.
     ///
