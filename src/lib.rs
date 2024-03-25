@@ -206,7 +206,7 @@ struct FrameMessage {
 /// You feed input frames to the [`Collector`], and ask the [`Writer`] to
 /// start writing the GIF.
 #[inline]
-pub fn new(settings: Settings) -> CatResult<(Collector, Writer)> {
+pub fn new(settings: Settings) -> GifResult<(Collector, Writer)> {
     if settings.quality == 0 || settings.quality > 100 {
         return Err(Error::WrongSize("quality must be 1-100".into())); // I forgot to add a better error variant
     }
@@ -534,7 +534,7 @@ impl Writer {
     ///
     /// `ProgressReporter.increase()` is called each time a new frame is being written.
     #[inline]
-    pub fn write<W: Write>(mut self, mut writer: W, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    pub fn write<W: Write>(mut self, mut writer: W, reporter: &mut dyn ProgressReporter) -> GifResult<()> {
         let decode_queue_recv = self.queue_iter.take().ok_or(Error::Aborted)?;
         self.write_inner(decode_queue_recv, &mut writer, reporter)
     }
