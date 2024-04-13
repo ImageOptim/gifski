@@ -78,7 +78,7 @@ fn bin_main() -> BinResult<()> {
                             .default_value("20"))
                         .arg(Arg::new("fast-forward")
                             .long("fast-forward")
-                            .help("Multiply speed of video by a factor\n(no effect when using images as input)")
+                            .help("Multiply speed of video by a factor")
                             .value_parser(value_parser!(f32))
                             .value_name("x")
                             .default_value("1"))
@@ -169,7 +169,7 @@ fn bin_main() -> BinResult<()> {
                         .get_matches_from(wild::args_os());
 
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
-    if !matches.get_flag("nosort") {
+    if !matches.get_flag("nosort") && frames.len() > 1 {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
     let frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
@@ -241,16 +241,21 @@ fn bin_main() -> BinResult<()> {
             FileType::Other => get_video_decoder(path, rate, settings)?,
         }
     } else {
-        if let Ok(FileType::JPEG) = file_type(&frames[0]) {
-            return Err("JPEG format is unsuitable for conversion to GIF.\n\n\
-                JPEG's compression artifacts and color space are very problematic for palette-based\n\
-                compression. Please don't use JPEG for making GIF animations. Please re-export\n\
-                your animation using the PNG format.".into())
-        }
         if speed != 1.0 {
-            return Err("Speed is for videos. It doesn't make sense for images. Use fps only".into());
+            eprintln!("warning: --fast-forward option is for videos. It doesn't make sense for images. Use --fps only.");
         }
-        Box::new(png::Lodecoder::new(frames, rate))
+        match file_type(&frames[0]).unwrap_or(FileType::Other) {
+            FileType::JPEG => {
+                return Err("JPEG format is unsuitable for conversion to GIF.\n\n\
+                    JPEG's compression artifacts and color space are very problematic for palette-based\n\
+                    compression. Please don't use JPEG for making GIF animations. Please re-export\n\
+                    your animation using the PNG format.".into())
+            },
+            FileType::GIF => {
+                return Err("Too many arguments. Unexpectedly got a GIF as an input frame. Only PNG format is supported for individual frames.".into());
+            },
+            _ => Box::new(png::Lodecoder::new(frames, rate)),
+        }
     };
 
     let mut pb;
