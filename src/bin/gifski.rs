@@ -17,7 +17,7 @@ use clap::value_parser;
 #[cfg(feature = "video")]
 mod ffmpeg_source;
 mod png;
-mod gif;
+mod gif_source;
 mod source;
 use crate::source::Source;
 
@@ -233,7 +233,7 @@ fn bin_main() -> BinResult<()> {
                 if !quiet && (width.is_none() && settings.quality > 50) {
                     eprintln!("warning: reading an existing GIF as an input. This can only worsen the quality. Use PNG frames instead.");
                 }
-                Box::new(gif::GifDecoder::new(path, rate)?)
+                Box::new(gif_source::GifDecoder::new(path, rate)?)
             },
             _ if path.is_dir() => {
                 return Err(format!("{} is a directory, not a PNG file", path.display()).into());
