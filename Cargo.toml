@@ -10,10 +10,10 @@ license = "AGPL-3.0-or-later"
 name = "gifski"
 readme = "README.md"
 repository = "https://github.com/ImageOptim/gifski"
-version = "1.14.4"
+version = "1.32.0"
 autobins = false
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.74"
 
 [[bin]]
 doctest = false
@@ -39,7 +39,7 @@ loop9 = "0.1.5"
 # noisy-float 0.2 bug
 num-traits = { version = "0.2.17", features = ["i128", "std"] }
 crossbeam-utils = "0.8.19"
-ordered-channel = { version = "1.0.0", features = ["crossbeam-channel"] }
+ordered-channel = { version = "1.1.0", features = ["crossbeam-channel"] }
 y4m = { version = "0.8.0", optional = true }
 yuv = { version = "0.1.5", optional = true }
 
@@ -56,7 +56,7 @@ lodepng = "3.10.1"
 [features]
 # `cargo build` will skip the binaries with missing `required-features`
 # so all CLI dependencies have to be enabled by default.
-default = ["gifsicle", "video", "binary"]
+default = ["gifsicle", "binary"]
 # You can disable this feture when using gifski as a library.
 binary = ["dep:clap", "dep:yuv", "dep:y4m", "png", "pbr", "dep:wild", "dep:natord", "dep:dunce"]
 capi = [] # internal for cargo-c only
