@@ -1,26 +1,29 @@
 //! This is for reading GIFs as an input for re-encoding as another GIF
 
-use std::fs::File;
+use std::io::Read;
+use crate::source::{Fps, Source};
+use crate::{BinResult, SrcPath};
 use gif::Decoder;
 use gifski::Collector;
-use std::path::Path;
-use crate::{source::{Fps, Source}, BinResult};
 
 pub struct GifDecoder {
     speed: f32,
-    decoder: Decoder<File>,
+    decoder: Decoder<Box<dyn Read>>,
     screen: gif_dispose::Screen,
 }
 
 impl GifDecoder {
-    pub fn new(path: &Path, fps: Fps) -> BinResult<Self> {
-        let file = std::fs::File::open(path)?;
+    pub fn new(src: SrcPath, fps: Fps) -> BinResult<Self> {
+        let input = match src {
+            SrcPath::Path(path) => Box::new(std::fs::File::open(path)?) as Box<dyn Read>,
+            SrcPath::Stdin(buf) => Box::new(buf),
+        };
 
         let mut gif_opts = gif::DecodeOptions::new();
         // Important:
         gif_opts.set_color_output(gif::ColorOutput::Indexed);
 
-        let decoder = gif_opts.read_info(file)?;
+        let decoder = gif_opts.read_info(input)?;
         let screen = gif_dispose::Screen::new_decoder(&decoder);
 
         Ok(Self {
