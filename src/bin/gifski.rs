@@ -8,6 +8,7 @@
 #![allow(clippy::redundant_closure_for_method_calls)]
 #![allow(clippy::wildcard_imports)]
 
+use clap::error::ErrorKind::MissingRequiredArgument;
 use clap::builder::NonEmptyStringValueParser;
 use std::io::stdin;
 use std::io::BufRead;
@@ -23,6 +24,7 @@ use clap::value_parser;
 mod ffmpeg_source;
 mod png;
 mod gif_source;
+mod y4m_source;
 mod source;
 use crate::source::Source;
 
@@ -43,7 +45,7 @@ use std::time::Duration;
 #[cfg(feature = "video")]
 const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, or multiple PNG image files";
 #[cfg(not(feature = "video"))]
-const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames";
+const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames, or a .y4m file";
 
 fn main() {
     if let Err(e) = bin_main() {
@@ -171,7 +173,13 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(parse_color)
                             .value_name("RGBHEX"))
-                        .get_matches_from(wild::args_os());
+                        .try_get_matches_from(wild::args_os())
+                        .unwrap_or_else(|e| {
+                            if e.kind() == MissingRequiredArgument && !stdin().is_terminal() {
+                                eprintln!("If you're trying to pipe a file, use \"-\" as the input file name");
+                            }
+                            e.exit()
+                        });
 
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
     if !matches.get_flag("nosort") && frames.len() > 1 {
@@ -280,7 +288,7 @@ fn bin_main() -> BinResult<()> {
                 _ if path.is_dir() => {
                     return Err(format!("{} is a directory, not a PNG file", path.display()).into());
                 },
-                FileType::Other => get_video_decoder(src, rate, settings)?,
+                other_type => get_video_decoder(other_type, src, rate, settings)?,
             }
         } else {
             if speed != 1.0 {
@@ -294,9 +302,8 @@ fn bin_main() -> BinResult<()> {
                         compression. Please don't use JPEG for making GIF animations. Please re-export\n\
                         your animation using the PNG format.".into())
                 },
-                FileType::GIF => {
-                    return Err("Too many arguments. Unexpectedly got a GIF as an input frame. Only PNG format is supported for individual frames.".into());
-                },
+                FileType::GIF => return unexpected("GIF"),
+                FileType::Y4M => return unexpected("Y4M"),
                 _ => Box::new(png::Lodecoder::new(frames, rate)),
             }
         };
@@ -363,6 +370,11 @@ fn check_errors(err1: Result<(), gifski::Error>, err2: BinResult<()>) -> BinResu
 }
 
 #[cold]
+fn unexpected(ftype: &'static str) -> BinResult<()> {
+    Err(format!("Too many arguments. Unexpectedly got a {ftype} as an input frame. Only PNG format is supported for individual frames.").into())
+}
+
+#[cold]
 fn panic_err(err: Box<dyn std::any::Any + Send>) -> String {
     err.downcast::<String>().map(|s| *s)
     .unwrap_or_else(|e| e.downcast_ref::<&str>().copied().unwrap_or("panic").to_owned())
@@ -398,19 +410,26 @@ fn color_parser() {
 }
 
 #[allow(clippy::upper_case_acronyms)]
+#[derive(PartialEq)]
 enum FileType {
-    PNG, GIF, JPEG, Other,
+    PNG, GIF, JPEG, Y4M, Other,
 }
 
 fn file_type(src: &mut SrcPath) -> BinResult<FileType> {
     let mut buf = [0; 4];
     match src {
-        SrcPath::Path(path) => {
-            let mut file = std::fs::File::open(path)?;
-            file.read_exact(&mut buf)?;
+        SrcPath::Path(path) => match path.extension() {
+            Some(e) if e.eq_ignore_ascii_case("y4m") => return Ok(FileType::Y4M),
+            Some(e) if e.eq_ignore_ascii_case("png") => return Ok(FileType::PNG),
+            _ => {
+                let mut file = std::fs::File::open(path)?;
+                file.read_exact(&mut buf)?;
+            }
         },
         SrcPath::Stdin(stdin) => {
-            buf.copy_from_slice(&stdin.fill_buf()?[..4]);
+            let buf_in = stdin.fill_buf()?;
+            let max_len = buf_in.len().min(4);
+            buf[..max_len].copy_from_slice(&buf_in[..max_len]);
             // don't consume
         },
     }
@@ -420,6 +439,9 @@ fn file_type(src: &mut SrcPath) -> BinResult<FileType> {
     }
     if &buf == b"GIF8" {
         return Ok(FileType::GIF);
+    }
+    if &buf == b"YUV4" {
+        return Ok(FileType::Y4M);
     }
     if buf[..2] == [0xFF, 0xD8] {
         return Ok(FileType::JPEG);
@@ -483,23 +505,41 @@ impl fmt::Display for DestPath<'_> {
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(path: SrcPath, fps: source::Fps, settings: Settings) -> BinResult<Box<dyn Source>> {
-    Ok(Box::new(ffmpeg_source::FfmpegDecoder::new(path, fps, settings)?))
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, settings: Settings) -> BinResult<Box<dyn Source>> {
+    Ok(if ftype == FileType::Y4M {
+        Box::new(y4m_source::Y4MDecoder::new(src, fps)?)
+    } else {
+        Box::new(ffmpeg_source::FfmpegDecoder::new(src, fps, settings)?)
+    })
 }
 
 #[cfg(not(feature = "video"))]
 #[cold]
-fn get_video_decoder(_: SrcPath<'_>, _: source::Fps, _: Settings) -> BinResult<Box<dyn Source>> {
-    Err(r"Video support is permanently disabled in this executable.
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, _: Settings) -> BinResult<Box<dyn Source>> {
+    if ftype == FileType::Y4M {
+        Ok(Box::new(y4m_source::Y4MDecoder::new(src, fps)?))
+    } else {
+        let path = match &src {
+            SrcPath::Path(path) => path,
+            SrcPath::Stdin(_) => Path::new("video.mp4"),
+        };
+        let rel_path = path.file_name().map(Path::new).unwrap_or(path);
+        Err(format!(r#"Video support is permanently disabled in this distribution of gifski.
 
-To enable video decoding you need to recompile gifski from source with:
-cargo build --release --features=video
-or
-cargo install gifski --features=video
+The only 'video' format supported at this time is YUV4MPEG2, which can be piped from ffmpeg:
 
-Alternatively, use ffmpeg command to export PNG frames, and then specify
+    ffmpeg -i "{src}" -f yuv4mpegpipe | gifski -o "{gif}" -
+
+To enable full video decoding you need to recompile gifski from source.
+https://github.com/imageoptim/gifski
+
+Alternatively, use ffmpeg or other tool to export PNG frames, and then specify
 the PNG files as input for this executable. Instructions on https://gif.ski
-".into())
+"#,
+src = path.display(),
+gif = rel_path.with_extension("gif").display()
+).into())
+    }
 }
 
 struct ProgressBar {
