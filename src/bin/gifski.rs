@@ -12,6 +12,7 @@ use clap::builder::NonEmptyStringValueParser;
 use std::io::stdin;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::IsTerminal;
 use std::io::Read;
 use std::io::StdinLock;
 use std::io::Stdout;
@@ -260,7 +261,11 @@ fn bin_main() -> BinResult<()> {
     let decode_thread = thread::Builder::new().name("decode".into()).spawn_scoped(scope, move || {
         let mut decoder = if let [path] = &frames[..] {
             let mut src = if path.as_os_str() == "-" {
-                SrcPath::Stdin(BufReader::new(stdin().lock()))
+                let fd = stdin().lock();
+                if fd.is_terminal() {
+                    eprintln!("warning: used '-' as the input path, but the stdin is a terminal, not a file.");
+                }
+                SrcPath::Stdin(BufReader::new(fd))
             } else {
                 SrcPath::Path(path.to_path_buf())
             };
@@ -303,6 +308,7 @@ fn bin_main() -> BinResult<()> {
 
     let mut file_tmp;
     let mut stdio_tmp;
+    let mut print_terminal_err = false;
     let out: &mut dyn io::Write = match output_path {
         DestPath::Path(p) => {
             file_tmp = File::create(p)
@@ -311,6 +317,7 @@ fn bin_main() -> BinResult<()> {
         },
         DestPath::Stdout => {
             stdio_tmp = io::stdout().lock();
+            print_terminal_err = stdio_tmp.is_terminal();
             &mut stdio_tmp
         },
     };
@@ -333,6 +340,10 @@ fn bin_main() -> BinResult<()> {
         &mut pb
     };
 
+    if print_terminal_err {
+        eprintln!("warning: used '-' as the output path, but the stdout is a terminal, not a file");
+        std::thread::sleep(Duration::from_secs(3));
+    }
     let write_result = writer.write(io::BufWriter::new(out), progress);
     let thread_result = decode_thread.join().map_err(panic_err)?;
     check_errors(write_result, thread_result)?;
