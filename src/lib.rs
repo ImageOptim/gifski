@@ -521,7 +521,7 @@ impl Writer {
                 // delay=1 doesn't work, and it's too late to drop frames now
                 let delay = ((end_pts * 100_f64).round() as u64)
                     .saturating_sub(pts_in_delay_units)
-                    .min(30000).max(2) as u16;
+                    .clamp(2, 30000) as u16;
                 pts_in_delay_units += u64::from(delay);
 
                 enc.write_frame(frame, delay, screen_width, screen_height, &self.settings.s)?;
