@@ -317,9 +317,27 @@ fn bin_main() -> BinResult<()> {
     let mut stdio_tmp;
     let mut print_terminal_err = false;
     let out: &mut dyn io::Write = match output_path {
-        DestPath::Path(p) => {
-            file_tmp = File::create(p)
-                .map_err(|e| format!("Can't write to {}: {e}", p.display()))?;
+        DestPath::Path(path) => {
+            file_tmp = File::create(path)
+                .map_err(|err| {
+                    let mut msg = format!("Can't write to \"{}\": {err}", path.display());
+                    let canon = path.canonicalize();
+                    if let Some(parent) = canon.as_deref().unwrap_or(path).parent() {
+                        if parent.as_os_str() != "" {
+                            use std::fmt::Write;
+                            match parent.try_exists() {
+                                Ok(true) => {},
+                                Ok(false) => {
+                                    let _ = write!(&mut msg, " (directory \"{}\" doesn't exist)", parent.display());
+                                },
+                                Err(err) => {
+                                    let _ = write!(&mut msg, " (directory \"{}\" is not accessible: {err})", parent.display());
+                                },
+                            }
+                        }
+                    }
+                    msg
+                })?;
             &mut file_tmp
         },
         DestPath::Stdout => {
@@ -455,18 +473,34 @@ fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
         if path.as_os_str() == "-" && paths.len() == 1 {
             break;
         }
-        if !path.exists() {
-            let mut msg = format!("Unable to find the input file: \"{}\"", path.display());
-            if path.to_str().map_or(false, |p| p.contains(['*','?','['])) {
-                msg += "\nThe pattern did not match any files.";
-            } else if path.extension() == Some("gif".as_ref()) {
-                msg = format!("Did you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
-            } else if path.is_relative() {
-                use std::fmt::Write;
-                write!(&mut msg, " (searched in \"{}\")", env::current_dir()?.display())?;
+        let mut msg = match path.try_exists() {
+            Ok(true) => continue,
+            Ok(false) => format!("Unable to find the input file: \"{}\"", path.display()),
+            Err(err) => format!("Unable to access the input file \"{}\": {err}", path.display()),
+        };
+        let canon = path.canonicalize();
+        if let Some(parent) = canon.as_deref().unwrap_or(path).parent() {
+            if parent.as_os_str() != "" {
+                if let Ok(false) = path.try_exists() {
+                    use std::fmt::Write;
+                    if msg.len() > 80 {
+                        msg.push('\n');
+                    }
+                    write!(&mut msg, " (directory \"{}\" doesn't exist either)", parent.display())?;
+
+                }
             }
-            return Err(msg.into())
         }
+        if path.to_str().map_or(false, |p| p.contains(['*','?','['])) {
+            msg += "\nThe wildcard pattern did not match any files.";
+        } else if path.is_relative() {
+            use std::fmt::Write;
+            write!(&mut msg, " (searched in \"{}\")", env::current_dir()?.display())?;
+        }
+        if path.extension() == Some("gif".as_ref()) {
+            msg = format!("\nDid you mean to use -o \"{}\" to specify it as the output file instead?", path.display());
+        }
+        return Err(msg.into())
     }
     Ok(())
 }
