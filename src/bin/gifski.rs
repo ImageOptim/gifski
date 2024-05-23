@@ -562,7 +562,7 @@ fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, _: Setting
 
 The only 'video' format supported at this time is YUV4MPEG2, which can be piped from ffmpeg:
 
-    ffmpeg -i "{src}" -f yuv4mpegpipe | gifski -o "{gif}" -
+    ffmpeg -i "{src}" -f yuv4mpegpipe - | gifski -o "{gif}" -
 
 To enable full video decoding you need to recompile gifski from source.
 https://github.com/imageoptim/gifski

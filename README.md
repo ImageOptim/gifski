@@ -30,7 +30,7 @@ gifski is a command-line tool. If you're not comfortable with a terminal, try th
 If you have ffmpeg installed, you can use it to stream a video directly to the gifski command by adding `-f yuv4mpegpipe` to `ffmpeg`'s arguments:
 
 ```sh
-ffmpeg -i video.mp4 -f yuv4mpegpipe | gifski -o anim.gif -
+ffmpeg -i video.mp4 -f yuv4mpegpipe - | gifski -o anim.gif -
 ```
 
 Replace "video.mp4" in the above code with actual path to your video.
