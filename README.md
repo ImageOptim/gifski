@@ -57,7 +57,7 @@ Note that `*` is a special wildcard character, and it won't work when placed ins
 
 You can also resize frames (with `-W <width in pixels>` option). If the input was ever encoded using a lossy video codec it's recommended to at least halve size of the frames to hide compression artefacts and counter chroma subsampling that was done by the video codec.
 
-See `gifski -h` for more options.
+See `gifski --help` for more options.
 
 ### Tips for smaller GIF files
 

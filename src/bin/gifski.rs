@@ -159,6 +159,12 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(value_parser!(i16))
                             .value_name("num"))
+                        .arg(Arg::new("bounce")
+                            .long("bounce")
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
+                            .hide_short_help(true)
+                            .help("Make animation play forwards then backwards"))
                         .arg(Arg::new("fixed-color")
                             .long("fixed-color")
                             .help("Always include this color in the palette")
@@ -182,10 +188,11 @@ fn bin_main() -> BinResult<()> {
                         });
 
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
+    let bounce = matches.get_flag("bounce");
     if !matches.get_flag("nosort") && frames.len() > 1 {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
-    let frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
+    let mut frames: Vec<_> = frames.into_iter().map(PathBuf::from).collect();
 
     let output_path = DestPath::new(matches.get_one::<PathBuf>("output").ok_or("?")?);
     let width = matches.get_one::<u32>("width").copied();
@@ -268,6 +275,9 @@ fn bin_main() -> BinResult<()> {
 
     let decode_thread = thread::Builder::new().name("decode".into()).spawn_scoped(scope, move || {
         let mut decoder = if let [path] = &frames[..] {
+            if bounce {
+                eprintln!("warning: the bounce flag is supported only for individual files, not pipe or video");
+            }
             let mut src = if path.as_os_str() == "-" {
                 let fd = stdin().lock();
                 if fd.is_terminal() {
@@ -291,6 +301,10 @@ fn bin_main() -> BinResult<()> {
                 other_type => get_video_decoder(other_type, src, rate, settings)?,
             }
         } else {
+            if bounce {
+                let mut extra: Vec<_> = frames.iter().skip(1).rev().cloned().collect();
+                frames.append(&mut extra);
+            }
             if speed != 1.0 {
                 eprintln!("warning: --fast-forward option is for videos. It doesn't make sense for images. Use --fps only.");
             }
