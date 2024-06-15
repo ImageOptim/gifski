@@ -99,7 +99,7 @@ fn bin_main() -> BinResult<()> {
                             .conflicts_with("fast")
                             .num_args(0)
                             .action(ArgAction::SetTrue)
-                            .help("50% slower encoding, but 1% better quality"))
+                            .help("50% slower encoding, but 1% better quality and usually larger file size"))
                         .arg(Arg::new("quality")
                             .long("quality")
                             .short('Q')
