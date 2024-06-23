@@ -120,6 +120,16 @@ impl SettingsExt {
             0
         }
     }
+
+    pub(crate) fn dithering_level(&self) -> f32 {
+        let gifsicle_quality = if cfg!(feature = "gifsicle") { self.giflossy_quality } else { 100 };
+        debug_assert!(gifsicle_quality <= 100);
+        // lossy LZW adds its own dithering, so the input could be less nosiy to compensate
+        // but don't change dithering unless gifsicle quality < 90, and don't completely disable it
+        let gifsicle_factor = 0.25 + f32::from(gifsicle_quality) * (1./100. * 1./0.9 * 0.75);
+
+        (f32::from(self.s.quality) * (1./50. * gifsicle_factor) - 1.).max(0.2)
+    }
 }
 
 impl Default for Settings {
@@ -485,8 +495,7 @@ impl Writer {
                 res = liq.quantize(&mut img)?;
             }
         }
-
-        res.set_dithering_level((f32::from(self.settings.s.quality) / 50.0 - 1.).max(0.2))?;
+        res.set_dithering_level(self.settings.dithering_level())?;
 
         let mut out = Vec::new();
         out.try_reserve_exact(width*height).map_err(imagequant::liq_error::from)?;
