@@ -162,7 +162,7 @@ impl Source for Y4MDecoder {
                                 out.extend(
                                     y.iter().copied().zip(u.iter().copied().zip(v.iter().copied()))
                                     .map(|(y, (u, v))| {
-                                        conv.to_rgb(YUV {y, u, v}).alpha(255)
+                                        conv.to_rgb(YUV {y, u, v}).with_alpha(255)
                                     }));
                             }
                         },
@@ -179,7 +179,7 @@ impl Source for Y4MDecoder {
                                 out.extend(
                                     y.iter().copied().zip(u.zip(v))
                                     .map(|(y, (u, v))| {
-                                        conv.to_rgb(YUV {y, u, v}).alpha(255)
+                                        conv.to_rgb(YUV {y, u, v}).with_alpha(255)
                                     }));
                             }
                         },
@@ -193,7 +193,7 @@ impl Source for Y4MDecoder {
                                 out.extend(
                                     y.iter().copied().zip(u.zip(v))
                                     .map(|(y, (u, v))| {
-                                        conv.to_rgb(YUV {y, u, v}).alpha(255)
+                                        conv.to_rgb(YUV {y, u, v}).with_alpha(255)
                                     }));
                             }
                         },

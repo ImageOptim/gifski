@@ -914,7 +914,7 @@ fn trim_image(mut image_trimmed: ImgRef<u8>, image8_pal: &[RGB8], transparent_in
                 debug_assert!(false, "{px} > {}", image8_pal.len());
                 return false
             };
-            pal_px.alpha(255) == bg
+            pal_px.with_alpha(255) == bg
         }
     };
 
