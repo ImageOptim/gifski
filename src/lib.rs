@@ -128,7 +128,7 @@ impl SettingsExt {
         // but don't change dithering unless gifsicle quality < 90, and don't completely disable it
         let gifsicle_factor = 0.25 + f32::from(gifsicle_quality) * (1./100. * 1./0.9 * 0.75);
 
-        (f32::from(self.s.quality) * (1./50. * gifsicle_factor) - 1.).max(0.2)
+        (f32::from(self.s.quality) * (1./50. * gifsicle_factor) - 1.).clamp(0.2, 1.)
     }
 }
 
