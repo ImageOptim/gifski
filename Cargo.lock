@@ -307,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "gifski"
-version = "1.32.0"
+version = "1.32.1"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -791,6 +791,22 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "y4m"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
+
+[[package]]
+name = "yuv"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1a14a8fca413602b1dbb0bdf838e2faeb7a85489f06ee760ba19876396dff60"
+dependencies = [
+ "num-traits",
+ "rgb",
+]
 
 [[package]]
 name = "zerocopy"
