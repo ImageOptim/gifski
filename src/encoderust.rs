@@ -2,7 +2,6 @@ use crate::error::CatResult;
 use crate::GIFFrame;
 use crate::Settings;
 use crate::SettingsExt;
-use rgb::ComponentBytes;
 use rgb::RGB8;
 use std::cell::Cell;
 use std::io::Write;
@@ -55,7 +54,7 @@ impl<W: Write> RustEncoder<W> {
 
         let (buffer, width, height) = image.into_contiguous_buf();
 
-        let mut pal_rgb = pal.as_bytes().to_vec();
+        let mut pal_rgb = rgb::bytemuck::cast_slice(&pal).to_vec();
         // Palette should be power-of-two sized
         if pal.len() != 256 {
             let needed_size = 3 * pal.len().max(2).next_power_of_two();
