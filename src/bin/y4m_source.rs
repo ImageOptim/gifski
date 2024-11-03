@@ -5,6 +5,7 @@ use std::io::Read;
 use imgref::ImgVec;
 use y4m::Colorspace;
 use y4m::Decoder;
+use y4m::ParseError;
 use gifski::Collector;
 use yuv::color::MatrixCoefficients;
 use yuv::color::Range;
@@ -42,7 +43,15 @@ impl Y4MDecoder {
         Ok(Self {
             file_size,
             fps,
-            decoder: Decoder::new(reader)?,
+            decoder: Decoder::new(reader).map_err(|e| match e {
+                y4m::Error::EOF => "The y4m file is truncated or invalid",
+                y4m::Error::BadInput => "The y4m file contains invalid metadata",
+                y4m::Error::UnknownColorspace => "y4m uses an unusual color format that is not supported",
+                y4m::Error::OutOfMemory => "Out of memory, or the y4m file has bogus dimensions",
+                y4m::Error::ParseError(ParseError::InvalidY4M) => "The input is not a y4m file",
+                y4m::Error::ParseError(error) => return format!("y4m contains invalid data: {error}"),
+                y4m::Error::IoError(error) => return format!("I/O error when reading a y4m file: {error}"),
+            }.to_string())?,
         })
     }
 }
