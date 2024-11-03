@@ -15,7 +15,7 @@ use crate::source::{Fps, Source};
 
 pub struct Y4MDecoder {
     fps: Fps,
-    decoder: Decoder<Box<dyn Read>>,
+    decoder: Decoder<Box<BufReader<dyn Read>>>,
     file_size: Option<u64>,
 }
 
@@ -34,9 +34,9 @@ impl Y4MDecoder {
                     use std::os::windows::fs::MetadataExt;
                     file_size = Some(m.file_size());
                 }
-                Box::new(BufReader::new(f)) as Box<dyn Read>
+                Box::new(BufReader::new(f)) as Box<BufReader<dyn Read>>
             },
-            SrcPath::Stdin(buf) => Box::new(buf) as _,
+            SrcPath::Stdin(buf) => Box::new(buf) as Box<BufReader<dyn Read>>,
         };
 
         Ok(Self {
