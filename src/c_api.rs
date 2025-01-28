@@ -758,9 +758,7 @@ fn c_incomplete() {
         fast: true,
         repeat: 0,
     })};
-
-    let rgb: *const RGB8 = ptr::null();
-    assert_eq!(3, mem::size_of_val(unsafe { &*rgb }));
+    assert_eq!(3, mem::size_of::<RGB8>());
 
     assert!(!g.is_null());
     unsafe {
