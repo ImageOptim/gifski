@@ -1,5 +1,3 @@
-//! This is for reading GIFs as an input for re-encoding as another GIF
-
 use std::io::BufReader;
 use std::io::Read;
 use imgref::ImgVec;
@@ -97,24 +95,24 @@ impl Source for Y4MDecoder {
         let height = self.decoder.get_height();
         let raw_params_str = &*String::from_utf8_lossy(self.decoder.get_raw_params()).into_owned();
         let range = raw_params_str.split_once("COLORRANGE=").map(|(_, r)| {
-            if r.starts_with("LIMIT") { Range::Limited } else { Range::Full }
+            if r.starts_with("FULL") { Range::Full } else { Range::Limited }
         });
 
         let sd_or_hd = if height <= 480 && width <= 720 { MatrixCoefficients::BT601 } else { MatrixCoefficients::BT709 };
 
         let (samp, conv) = match self.decoder.get_colorspace() {
-            Colorspace::Cmono => (Samp::Mono, RGBConvert::<u8>::new(range.unwrap_or(Range::Full), MatrixCoefficients::Identity)),
+            Colorspace::Cmono => (Samp::Mono, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), MatrixCoefficients::Identity)),
             Colorspace::Cmono12 => return Err("Y4M with Cmono12 is not supported yet".into()),
-            Colorspace::C420 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), MatrixCoefficients::BT601)),
+            Colorspace::C420 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
             Colorspace::C420p10 => return Err("Y4M with C420p10 is not supported yet".into()),
             Colorspace::C420p12 => return Err("Y4M with C420p12 is not supported yet".into()),
-            Colorspace::C420jpeg => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Full), MatrixCoefficients::BT601)),
-            Colorspace::C420paldv => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), MatrixCoefficients::BT601)),
+            Colorspace::C420jpeg => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
+            Colorspace::C420paldv => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
             Colorspace::C420mpeg2 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
             Colorspace::C422 => (Samp::S2x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
             Colorspace::C422p10 => return Err("Y4M with C422p10 is not supported yet".into()),
             Colorspace::C422p12 => return Err("Y4M with C422p12 is not supported yet".into()),
-            Colorspace::C444 => (Samp::S1x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Full), MatrixCoefficients::BT709)),
+            Colorspace::C444 => (Samp::S1x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
             Colorspace::C444p10 => return Err("Y4M with C444p10 is not supported yet".into()),
             Colorspace::C444p12 => return Err("Y4M with C444p12 is not supported yet".into()),
             _ => return Err(format!("Y4M uses unsupported color mode {raw_params_str}").into()),
