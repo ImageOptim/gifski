@@ -78,7 +78,7 @@ impl<T> Denoiser<T> {
     pub fn new(width: usize, height: usize, quality: u8) -> Result<Self, WrongSizeError> {
         let area = width.checked_mul(height).ok_or(WrongSizeError)?;
         let clear = Acc {
-            px_blur: [(RGB8::new(0,0,0), RGB8::new(0,0,0)); LOOKAHEAD],
+            px_blur: [(RGB8::new(0, 0, 0), RGB8::new(0, 0, 0)); LOOKAHEAD],
             alpha_bits: (1 << LOOKAHEAD) - 1,
             bg_set: RGBA8::default(),
             stayed_for: 0,
@@ -213,7 +213,7 @@ impl Acc {
             // See how long this bg can stay
             let mut stays_frames = 0;
             for i in 1..LOOKAHEAD {
-                if self.get(i).map_or(false, |(c, blurred)| color_diff(c, curr) < threshold || color_diff(blurred, curr_blur) < threshold) {
+                if self.get(i).is_some_and(|(c, blurred)| color_diff(c, curr) < threshold || color_diff(blurred, curr_blur) < threshold) {
                     stays_frames = i;
                 } else {
                     break;
@@ -289,19 +289,21 @@ macro_rules! blur_channel {
 #[inline(never)]
 pub(crate) fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     let mut out = Vec::with_capacity(frame.width() * frame.height());
-    loop9_img(frame, |_,_, top, mid, bot| {
+    loop9_img(frame, |_, _, top, mid, bot| {
         out.push_in_cap(if mid.curr.a > 0 {
             let median_r = median_channel!(top, mid, bot, r);
             let median_g = median_channel!(top, mid, bot, g);
             let median_b = median_channel!(top, mid, bot, b);
 
             let blurred = RGB8::new(median_r, median_g, median_b);
-            if color_diff(mid.curr.rgb(), blurred) < 16*16*6 {
+            if color_diff(mid.curr.rgb(), blurred) < 16 * 16 * 6 {
                 blurred
             } else {
                 mid.curr.rgb()
             }
-        } else { RGB8::new(255,0,255) });
+        } else {
+            RGB8::new(255, 0, 255)
+        });
     });
     ImgVec::new(out, frame.width(), frame.height())
 }
@@ -309,19 +311,21 @@ pub(crate) fn smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
 #[inline(never)]
 pub(crate) fn less_smart_blur(frame: ImgRef<RGBA8>) -> ImgVec<RGB8> {
     let mut out = Vec::with_capacity(frame.width() * frame.height());
-    loop9_img(frame, |_,_, top, mid, bot| {
+    loop9_img(frame, |_, _, top, mid, bot| {
         out.push_in_cap(if mid.curr.a > 0 {
             let median_r = blur_channel!(top, mid, bot, r);
             let median_g = blur_channel!(top, mid, bot, g);
             let median_b = blur_channel!(top, mid, bot, b);
 
             let blurred = RGB8::new(median_r, median_g, median_b);
-            if color_diff(mid.curr.rgb(), blurred) < 16*16*6 {
+            if color_diff(mid.curr.rgb(), blurred) < 16 * 16 * 6 {
                 blurred
             } else {
                 mid.curr.rgb()
             }
-        } else { RGB8::new(255,0,255) });
+        } else {
+            RGB8::new(255, 0, 255)
+        });
     });
     ImgVec::new(out, frame.width(), frame.height())
 }
@@ -402,8 +406,8 @@ fn px<T>(f: Denoised<T>) -> (RGBA8, T) {
 
 #[test]
 fn one() {
-    let mut d = Denoiser::new(1,1, 100).unwrap();
-    let w = RGBA8::new(255,255,255,255);
+    let mut d = Denoiser::new(1, 1, 100).unwrap();
+    let w = RGBA8::new(255, 255, 255, 255);
     let frame = ImgVec::new(vec![w], 1, 1);
     let frame_blurred = smart_blur(frame.as_ref());
 
@@ -443,7 +447,6 @@ fn three() {
     assert_eq!(px(d.pop()), (b, 2));
     assert!(matches!(d.pop(), Denoised::Done));
 }
-
 
 #[test]
 fn four() {
@@ -511,7 +514,6 @@ fn six() {
     assert_eq!(px(d.pop()), (x, 5));
     assert!(matches!(d.pop(), Denoised::Done));
 }
-
 
 #[test]
 fn many() {

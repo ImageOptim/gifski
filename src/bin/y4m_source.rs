@@ -1,12 +1,9 @@
 use std::io::BufReader;
 use std::io::Read;
 use imgref::ImgVec;
-use y4m::Colorspace;
-use y4m::Decoder;
-use y4m::ParseError;
 use gifski::Collector;
-use yuv::color::MatrixCoefficients;
-use yuv::color::Range;
+use y4m::{Colorspace, Decoder, ParseError};
+use yuv::color::{MatrixCoefficients, Range};
 use yuv::convert::RGBConvert;
 use yuv::YUV;
 use crate::{SrcPath, BinResult};
@@ -87,6 +84,7 @@ impl Source for Y4MDecoder {
             file_size.saturating_sub(self.decoder.get_raw_params().len() as _) / (w * h * d * s / 4 + 6) as u64
         })
     }
+
     fn collect(&mut self, c: &mut Collector) -> BinResult<()> {
         let fps = self.decoder.get_framerate();
         let frame_time = 1. / (fps.num as f64 / fps.den as f64);
@@ -175,8 +173,8 @@ impl Source for Y4MDecoder {
                         },
                         Samp::S2x1 => {
                             let y = y.chunks_exact(width);
-                            let u = u.chunks_exact((width+1)/2);
-                            let v = v.chunks_exact((width+1)/2);
+                            let u = u.chunks_exact(width.div_ceil(2));
+                            let v = v.chunks_exact(width.div_ceil(2));
                             if y.len() != v.len() {
                                 return bad_frame(raw_params_str);
                             }
@@ -192,8 +190,8 @@ impl Source for Y4MDecoder {
                         },
                         Samp::S2x2 => {
                             let y = y.chunks_exact(width);
-                            let u = u.chunks_exact((width+1)/2).flat_map(|r| [r, r]);
-                            let v = v.chunks_exact((width+1)/2).flat_map(|r| [r, r]);
+                            let u = u.chunks_exact(width.div_ceil(2)).flat_map(|r| [r, r]);
+                            let v = v.chunks_exact(width.div_ceil(2)).flat_map(|r| [r, r]);
                             for (y, (u, v)) in y.zip(u.zip(v)) {
                                 let u = u.iter().copied().flat_map(|x| [x, x]);
                                 let v = v.iter().copied().flat_map(|x| [x, x]);
@@ -204,7 +202,7 @@ impl Source for Y4MDecoder {
                                     }));
                             }
                         },
-                    };
+                    }
                     if out.len() != width * height {
                         return bad_frame(raw_params_str);
                     }

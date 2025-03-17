@@ -1,9 +1,7 @@
-use rgb::ComponentMap;
+use gifski::{new, progress, Settings};
+use imgref::{ImgRef, ImgRefMut, ImgVec};
+use rgb::{ComponentMap, RGBA8};
 use std::path::{Path, PathBuf};
-use imgref::ImgVec;
-use imgref::{ImgRef, ImgRefMut};
-use rgb::RGBA8;
-use gifski::{Settings, new, progress};
 
 #[test]
 fn n_frames() {
@@ -101,7 +99,7 @@ fn all_but_one_dupe_frames() {
     let mut delays = vec![];
     let mut n = 0;
     for_each_frame(&out, |delay, frame, actual| {
-        let name = frame_filename(if n == 0 {0} else {1});
+        let name = frame_filename(if n == 0 { 0 } else { 1 });
         let expected = lodepng::decode32_file(&name).unwrap();
         let expected = ImgVec::new(expected.buffer, expected.width, expected.height);
         assert_images_eq(expected.as_ref(), actual, 1.7, format_args!("n={n}, {delay} {}", name.display()));
@@ -112,7 +110,7 @@ fn all_but_one_dupe_frames() {
 }
 
 fn frame_filename(n: usize) -> PathBuf {
-    format!("tests/{}.png", (n%3)+1).into()
+    format!("tests/{}.png", (n % 3) + 1).into()
 }
 
 fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(u32, &gif::Frame, ImgRef<RGBA8>)) {
@@ -124,28 +122,27 @@ fn for_each_frame(mut gif_data: &[u8], mut cb: impl FnMut(u32, &gif::Frame, ImgR
     let mut delay = 0;
     while let Some(frame) = decoder.read_next_frame().unwrap() {
         screen.blit_frame(frame).unwrap();
-        delay += frame.delay as u32;
+        delay += u32::from(frame.delay);
         cb(delay, frame, screen.pixels_rgba());
     }
 }
 
-
 #[test]
 fn anim3() {
-    assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), None, 0.8);
+    assert_anim_eq(6 * 3, |n| format!("tests/a3/{}{}.png", ["x", "y", "z"][n / 6], n % 6).into(), None, 0.8);
 }
 
 #[test]
 fn anim3_transparent1() {
     assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), Some(|_,mut fr| {
-        fr.pixels_mut().for_each(|px| if px.r == 0 && px.g == 0 { px.a = 0; })
+        fr.pixels_mut().for_each(|px| if px.r == 0 && px.g == 0 { px.a = 0; });
     }), 0.8);
 }
 
 #[test]
 fn anim3_transparent2() {
     assert_anim_eq(6*3, |n| format!("tests/a3/{}{}.png", ["x","y","z"][n/6], n%6).into(), Some(|_,mut fr| {
-        fr.pixels_mut().for_each(|px| if px.r != 0 { px.a = 0; })
+        fr.pixels_mut().for_each(|px| if px.r != 0 { px.a = 0; });
     }), 0.8);
 }
 
@@ -171,36 +168,35 @@ fn anim3_mix() {
 
 #[test]
 fn anim2_fwd() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), None, 0.8);
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1 + n).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_rev() {
-    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), None, 0.8);
+    assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43 - n).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_dupes() {
-    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", 1+n/2).into(), None, 0.8);
+    assert_anim_eq(43 * 2, |n| format!("tests/a2/{:02}.png", 1 + n / 2).into(), None, 0.8);
 }
 
 #[test]
 fn anim2_flips() {
-    assert_anim_eq(43*2, |n| format!("tests/a2/{:02}.png", if n&1==0 { 10 } else { 1+n/2 }).into(), None, 0.8);
+    assert_anim_eq(43 * 2, |n| format!("tests/a2/{:02}.png", if n & 1 == 0 { 10 } else { 1 + n / 2 }).into(), None, 0.8);
 }
-
 
 #[test]
 fn anim2_transparent() {
     assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 1+n).into(), Some(|_, mut fr| {
-        fr.pixels_mut().for_each(|px| if px.r > 128 { px.a = 0; })
+        fr.pixels_mut().for_each(|px| if px.r > 128 { px.a = 0; });
     }), 0.8);
 }
 
 #[test]
 fn anim2_transparent2() {
     assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|_, mut fr| {
-        fr.pixels_mut().for_each(|px| if px.g > 200 { px.a = 0; })
+        fr.pixels_mut().for_each(|px| if px.g > 200 { px.a = 0; });
     }), 0.8);
 }
 
@@ -208,7 +204,7 @@ fn anim2_transparent2() {
 fn anim2_transparent_half() {
     assert_anim_eq(43, |n| format!("tests/a2/{:02}.png", 43-n).into(), Some(|_, mut fr| {
         let n = fr.width()*(fr.height()/2);
-        fr.pixels_mut().skip(n).for_each(|px| if px.g > 200 { px.a = 0; })
+        fr.pixels_mut().skip(n).for_each(|px| if px.g > 200 { px.a = 0; });
     }), 0.8);
 }
 
