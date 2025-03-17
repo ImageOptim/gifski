@@ -9,7 +9,7 @@ pub use rgb::RGBA8;
 
 const LOOKAHEAD: usize = 5;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct Acc {
     px_blur: [(RGB8, RGB8); LOOKAHEAD],
     alpha_bits: u8,
