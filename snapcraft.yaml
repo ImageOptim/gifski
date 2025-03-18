@@ -5,8 +5,10 @@ description: |
    Squeezes maximum possible quality from the awful
    GIF format. https://gif.ski
 
-base: core20
-version: 1.33.0
+version: git
+
+grade: stable
+base: core22
 confinement: strict
 
 apps:
@@ -29,11 +31,10 @@ parts:
       - libavdevice-dev
       - libavfilter-dev
       - libavformat-dev
-      - libavresample-dev
       - libavutil-dev
       - libswresample-dev
       - libswscale-dev
-      - libclang-dev
+      - libclang-15-dev
     stage-packages:
       - ffmpeg
       - freeglut3 # dep leak from one of ffmpeg dev libs?
