@@ -25,6 +25,7 @@
 #![allow(clippy::enum_glob_use)]
 #![allow(clippy::if_not_else)]
 #![allow(clippy::inline_always)]
+#![allow(clippy::manual_range_contains)]
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::module_name_repetitions)]

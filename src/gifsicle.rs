@@ -333,10 +333,10 @@ fn interlaced_line(line: usize, height: usize) -> usize {
     if line > height / 2 {
         line * 2 - (height | 1)
     } else if line > height / 4 {
-        return line * 4 - (height & !1 | 2);
+        line * 4 - (height & !1 | 2)
     } else if line > height / 8 {
-        return line * 8 - (height & !3 | 4);
+        line * 8 - (height & !3 | 4)
     } else {
-        return line * 8;
+        line * 8
     }
 }

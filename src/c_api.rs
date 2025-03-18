@@ -596,7 +596,7 @@ impl GifskiHandleInternal {
     #[cold]
     fn print_error(&self, mut err: String) {
         if let Ok(reporter) = self.callbacks.lock().as_deref_mut() {
-            reporter.error(err)
+            reporter.error(err);
         } else {
             err.reserve_exact(1);
             err.push('\n');

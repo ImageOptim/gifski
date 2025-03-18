@@ -76,17 +76,17 @@ impl From<GifResult<()>> for GifskiError {
     fn from(res: GifResult<()>) -> Self {
         use crate::error::Error::*;
         match res {
-            Ok(()) => GifskiError::OK,
+            Ok(()) => Self::OK,
             Err(err) => match err {
-                Quant(_) => GifskiError::QUANT,
-                Pal(_) => GifskiError::GIF,
-                ThreadSend => GifskiError::THREAD_LOST,
+                Quant(_) => Self::QUANT,
+                Pal(_) => Self::GIF,
+                ThreadSend => Self::THREAD_LOST,
                 Io(ref err) => err.kind().into(),
-                Aborted => GifskiError::ABORTED,
-                Gifsicle | Gif(_) => GifskiError::GIF,
-                NoFrames => GifskiError::INVALID_STATE,
-                WrongSize(_) => GifskiError::INVALID_INPUT,
-                PNG(_) => GifskiError::OTHER,
+                Aborted => Self::ABORTED,
+                Gifsicle | Gif(_) => Self::GIF,
+                NoFrames => Self::INVALID_STATE,
+                WrongSize(_) => Self::INVALID_INPUT,
+                PNG(_) => Self::OTHER,
             },
         }
     }
@@ -97,15 +97,15 @@ impl From<io::ErrorKind> for GifskiError {
     fn from(res: io::ErrorKind) -> Self {
         use std::io::ErrorKind as EK;
         match res {
-            EK::NotFound => GifskiError::NOT_FOUND,
-            EK::PermissionDenied => GifskiError::PERMISSION_DENIED,
-            EK::AlreadyExists => GifskiError::ALREADY_EXISTS,
-            EK::InvalidInput | EK::InvalidData => GifskiError::INVALID_INPUT,
-            EK::TimedOut => GifskiError::TIMED_OUT,
-            EK::WriteZero => GifskiError::WRITE_ZERO,
-            EK::Interrupted => GifskiError::INTERRUPTED,
-            EK::UnexpectedEof => GifskiError::UNEXPECTED_EOF,
-            _ => GifskiError::OTHER,
+            EK::NotFound => Self::NOT_FOUND,
+            EK::PermissionDenied => Self::PERMISSION_DENIED,
+            EK::AlreadyExists => Self::ALREADY_EXISTS,
+            EK::InvalidInput | EK::InvalidData => Self::INVALID_INPUT,
+            EK::TimedOut => Self::TIMED_OUT,
+            EK::WriteZero => Self::WRITE_ZERO,
+            EK::Interrupted => Self::INTERRUPTED,
+            EK::UnexpectedEof => Self::UNEXPECTED_EOF,
+            _ => Self::OTHER,
         }
     }
 }
