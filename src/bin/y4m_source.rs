@@ -11,12 +11,13 @@ use crate::source::{Fps, Source};
 
 pub struct Y4MDecoder {
     fps: Fps,
+    in_color_space: Option<MatrixCoefficients>,
     decoder: Decoder<Box<BufReader<dyn Read>>>,
     file_size: Option<u64>,
 }
 
 impl Y4MDecoder {
-    pub fn new(src: SrcPath, fps: Fps) -> BinResult<Self> {
+    pub fn new(src: SrcPath, fps: Fps, in_color_space: Option<MatrixCoefficients>) -> BinResult<Self> {
         let mut file_size = None;
         let reader = match src {
             SrcPath::Path(path) => {
@@ -38,6 +39,7 @@ impl Y4MDecoder {
         Ok(Self {
             file_size,
             fps,
+            in_color_space,
             decoder: Decoder::new(reader).map_err(|e| match e {
                 y4m::Error::EOF => "The y4m file is truncated or invalid",
                 y4m::Error::BadInput => "The y4m file contains invalid metadata",
@@ -96,21 +98,23 @@ impl Source for Y4MDecoder {
             if r.starts_with("FULL") { Range::Full } else { Range::Limited }
         });
 
-        let sd_or_hd = if height <= 480 && width <= 720 { MatrixCoefficients::BT601 } else { MatrixCoefficients::BT709 };
+        let matrix = self.in_color_space.unwrap_or({
+            if height <= 480 && width <= 720 { MatrixCoefficients::BT601 } else { MatrixCoefficients::BT709 }
+        });
 
         let (samp, conv) = match self.decoder.get_colorspace() {
             Colorspace::Cmono => (Samp::Mono, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), MatrixCoefficients::Identity)),
             Colorspace::Cmono12 => return Err("Y4M with Cmono12 is not supported yet".into()),
-            Colorspace::C420 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
+            Colorspace::C420 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
             Colorspace::C420p10 => return Err("Y4M with C420p10 is not supported yet".into()),
             Colorspace::C420p12 => return Err("Y4M with C420p12 is not supported yet".into()),
-            Colorspace::C420jpeg => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
-            Colorspace::C420paldv => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
-            Colorspace::C420mpeg2 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
-            Colorspace::C422 => (Samp::S2x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
+            Colorspace::C420jpeg => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
+            Colorspace::C420paldv => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
+            Colorspace::C420mpeg2 => (Samp::S2x2, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
+            Colorspace::C422 => (Samp::S2x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
             Colorspace::C422p10 => return Err("Y4M with C422p10 is not supported yet".into()),
             Colorspace::C422p12 => return Err("Y4M with C422p12 is not supported yet".into()),
-            Colorspace::C444 => (Samp::S1x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), sd_or_hd)),
+            Colorspace::C444 => (Samp::S1x1, RGBConvert::<u8>::new(range.unwrap_or(Range::Limited), matrix)),
             Colorspace::C444p10 => return Err("Y4M with C444p10 is not supported yet".into()),
             Colorspace::C444p12 => return Err("Y4M with C444p12 is not supported yet".into()),
             _ => return Err(format!("Y4M uses unsupported color mode {raw_params_str}").into()),
