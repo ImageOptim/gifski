@@ -11,6 +11,7 @@
 use clap::builder::NonEmptyStringValueParser;
 use clap::error::ErrorKind::MissingRequiredArgument;
 use clap::value_parser;
+use yuv::color::MatrixCoefficients;
 use gifski::{Repeat, Settings};
 use std::io::stdin;
 use std::io::BufRead;
@@ -179,6 +180,14 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(parse_color)
                             .value_name("RGBHEX"))
+                        .arg(Arg::new("in-color-space")
+                            .long("in-color-space")
+                            .help("The color space of the input YUV4MPEG2 video\n\
+                                   Possible values: bt709 fcc bt470bg bt601 smpte240 ycgco\n\
+                                   Defaults to bt709 for HD and bt601 for SD resolutions")
+                            .num_args(1)
+                            .value_parser(parse_color_space)
+                            .value_name("name"))
                         .try_get_matches_from(wild::args_os())
                         .unwrap_or_else(|e| {
                             if e.kind() == MissingRequiredArgument && !stdin().is_terminal() {
@@ -220,6 +229,7 @@ fn bin_main() -> BinResult<()> {
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
     let fixed_colors = matches.get_many::<Vec<rgb::RGB8>>("fixed-color");
     let matte = matches.get_one::<rgb::RGB8>("matte");
+    let in_color_space = matches.get_one::<MatrixCoefficients>("in-color-space").copied();
 
     let rate = source::Fps { fps, speed };
 
@@ -297,7 +307,7 @@ fn bin_main() -> BinResult<()> {
                 _ if path.is_dir() => {
                     return Err(format!("{} is a directory, not a PNG file", path.display()).into());
                 },
-                other_type => get_video_decoder(other_type, src, rate, settings)?,
+                other_type => get_video_decoder(other_type, src, rate, in_color_space, settings)?,
             }
         } else {
             if bounce {
@@ -440,6 +450,21 @@ fn color_parser() {
     assert!(parse_colors("#12345").is_err());
 }
 
+fn parse_color_space(value: &str) -> Result<MatrixCoefficients, String> {
+    let value = value.to_lowercase();
+    let value = value.trim();
+    let matrix = match value {
+        "bt709" => MatrixCoefficients::BT709,
+        "fcc" => MatrixCoefficients::FCC,
+        "bt470bg" => MatrixCoefficients::BT470BG,
+        "bt601" => MatrixCoefficients::BT601,
+        "smpte240" => MatrixCoefficients::SMPTE240,
+        "ycgco" => MatrixCoefficients::YCgCo,
+        _ => return Err("unsupported color space".into()),
+    };
+    Ok(matrix)
+}
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(PartialEq)]
 enum FileType {
@@ -549,9 +574,9 @@ impl fmt::Display for DestPath<'_> {
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, settings: Settings) -> BinResult<Box<dyn Source>> {
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, settings: Settings) -> BinResult<Box<dyn Source>> {
     Ok(if ftype == FileType::Y4M {
-        Box::new(y4m_source::Y4MDecoder::new(src, fps)?)
+        Box::new(y4m_source::Y4MDecoder::new(src, fps, in_color_space)?)
     } else {
         Box::new(ffmpeg_source::FfmpegDecoder::new(src, fps, settings)?)
     })
@@ -559,9 +584,9 @@ fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, settings: 
 
 #[cfg(not(feature = "video"))]
 #[cold]
-fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, _: Settings) -> BinResult<Box<dyn Source>> {
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, _: Settings) -> BinResult<Box<dyn Source>> {
     if ftype == FileType::Y4M {
-        Ok(Box::new(y4m_source::Y4MDecoder::new(src, fps)?))
+        Ok(Box::new(y4m_source::Y4MDecoder::new(src, fps, in_color_space)?))
     } else {
         let path = match &src {
             SrcPath::Path(path) => path,
