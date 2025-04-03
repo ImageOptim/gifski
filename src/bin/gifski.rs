@@ -78,7 +78,7 @@ fn bin_main() -> BinResult<()> {
                             .short('r')
                             .help("Frame rate of animation. If using PNG files as \
                                    input, this means the speed, as all frames are \
-                                   kept. If video is used, it will be resampled to \
+                                   kept.\nIf video is used, it will be resampled to \
                                    this constant rate by dropping and/or duplicating \
                                    frames")
                             .value_parser(value_parser!(f32))
@@ -180,14 +180,15 @@ fn bin_main() -> BinResult<()> {
                             .num_args(1)
                             .value_parser(parse_color)
                             .value_name("RGBHEX"))
-                        .arg(Arg::new("in-color-space")
-                            .long("in-color-space")
+                        .arg(Arg::new("y4m-color-override")
+                            .long("y4m-color-override")
                             .help("The color space of the input YUV4MPEG2 video\n\
                                    Possible values: bt709 fcc bt470bg bt601 smpte240 ycgco\n\
                                    Defaults to bt709 for HD and bt601 for SD resolutions")
                             .num_args(1)
+                            .hide_short_help(true)
                             .value_parser(parse_color_space)
-                            .value_name("name"))
+                            .value_name("bt709"))
                         .try_get_matches_from(wild::args_os())
                         .unwrap_or_else(|e| {
                             if e.kind() == MissingRequiredArgument && !stdin().is_terminal() {
@@ -229,7 +230,7 @@ fn bin_main() -> BinResult<()> {
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
     let fixed_colors = matches.get_many::<Vec<rgb::RGB8>>("fixed-color");
     let matte = matches.get_one::<rgb::RGB8>("matte");
-    let in_color_space = matches.get_one::<MatrixCoefficients>("in-color-space").copied();
+    let in_color_space = matches.get_one::<MatrixCoefficients>("y4m-color-override").copied();
 
     let rate = source::Fps { fps, speed };
 
