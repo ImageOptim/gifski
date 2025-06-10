@@ -1,0 +1,22 @@
+name: Wasm
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Prepare cargo tests
+      run: rustup target add wasm32-unknown-emscripten
+
+    - name: Build for wasm
+      run: cargo build --target=wasm32-unknown-emscripten
+
