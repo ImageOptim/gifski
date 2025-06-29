@@ -156,7 +156,7 @@ fn bin_main() -> BinResult<()> {
                             .required(true))
                         .arg(Arg::new("repeat")
                             .long("repeat")
-                            .help("Number of times the animation is repeated (-1 none, 0 forever or <value> repetitions")
+                            .help("Number of times the animation is repeated (-1 none, 0 forever or <value> repetitions)")
                             .num_args(1)
                             .value_parser(value_parser!(i16))
                             .value_name("num"))
