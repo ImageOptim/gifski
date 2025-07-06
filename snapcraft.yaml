@@ -6,6 +6,7 @@ description: |
    GIF format. https://gif.ski
 
 version: git
+adopt-info: gifski
 
 grade: stable
 base: core22
@@ -24,6 +25,9 @@ parts:
     plugin: rust
     rust-features:
       - video
+    override-pull: |
+      craftctl default
+      craftctl set version="$(git describe --tags --abbrev=0)"
     build-packages:
       - pkg-config
       - ffmpeg
