@@ -43,11 +43,12 @@
 //!
 //! it will build `target/aarch64-apple-ios/release/libgifski.a` (ignore the warning about cdylib).
 
-use crate::{Collector, NoProgress, ProgressCallback, ProgressReporter, Repeat, Settings, Writer};
+use crate::progress::ProgressCallback;
+use crate::{CCallbacks, Collector, ErrorCallback, ProgressReporter, Repeat, Settings, Writer};
 use imgref::{Img, ImgVec};
 use rgb::{RGB8, RGBA8};
 use std::fs;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fs::File;
 use std::io;
 use std::io::Write;
@@ -57,7 +58,7 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
 use std::thread;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 mod c_api_error;
 use self::c_api_error::GifskiError;
 use std::panic::catch_unwind;
@@ -96,8 +97,8 @@ pub struct GifskiHandle {
 pub struct GifskiHandleInternal {
     writer: Mutex<Option<Writer>>,
     collector: Mutex<Option<Collector>>,
-    progress: Mutex<Option<ProgressCallback>>,
-    error_callback: Mutex<Option<Box<dyn Fn(String) + 'static + Sync + Send>>>,
+    /// Progress and error callbacks
+    callbacks: Mutex<CCallbacks>,
     /// Bool set to true when the thread has been set up,
     /// prevents re-setting of the thread after `finish()`
     write_thread: Mutex<(bool, Option<thread::JoinHandle<GifskiError>>)>,
@@ -126,8 +127,10 @@ pub unsafe extern "C" fn gifski_new(settings: *const GifskiSettings) -> *const G
             writer: Mutex::new(Some(writer)),
             write_thread: Mutex::new((false, None)),
             collector: Mutex::new(Some(collector)),
-            progress: Mutex::new(None),
-            error_callback: Mutex::new(None),
+            callbacks: Mutex::new(CCallbacks {
+                progress: None,
+                error: None,
+            }),
         }))
         .cast::<GifskiHandle>()
     } else {
@@ -378,18 +381,12 @@ pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame
 /// This function must be called before `gifski_set_file_output()` to take effect.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandle, cb: unsafe extern "C" fn(*mut c_void) -> c_int, user_data: *mut c_void) -> GifskiError {
-    let Some(g) = borrow(handle) else { return GifskiError::NULL_ARG };
-
-    if g.write_thread.lock().map_or(true, |t| t.0) {
-        g.print_error("tried to set progress callback after writing has already started".into());
-        return GifskiError::INVALID_STATE;
-    }
-    match g.progress.lock() {
-        Ok(mut progress) => {
-            *progress = Some(ProgressCallback::new(cb, user_data));
+    match set_callbacks(borrow(handle)) {
+        Ok(mut callbacks) => {
+            callbacks.progress = Some(ProgressCallback::new(cb, user_data));
             GifskiError::OK
         },
-        Err(_) => GifskiError::THREAD_LOST,
+        Err(e) => e,
     }
 }
 
@@ -408,27 +405,28 @@ pub unsafe extern "C" fn gifski_set_progress_callback(handle: *const GifskiHandl
 /// This function must be called before `gifski_set_file_output()` to take effect.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_set_error_message_callback(handle: *const GifskiHandle, cb: unsafe extern "C" fn(*const c_char, *mut c_void), user_data: *mut c_void) -> GifskiError {
-    let Some(g) = borrow(handle) else { return GifskiError::NULL_ARG };
-
-    let user_data = SendableUserData(user_data);
-    match g.error_callback.lock() {
-        Ok(mut error_callback) => {
-            *error_callback = Some(Box::new(move |mut s: String| {
-                s.reserve_exact(1);
-                s.push('\0');
-                let cstring = CString::from_vec_with_nul(s.into_bytes()).unwrap_or_default();
-                unsafe { cb(cstring.as_ptr(), user_data.clone().0) } // the clone is a no-op, only to force closure to own it
-            }));
+    match set_callbacks(borrow(handle)) {
+        Ok(mut callbacks) => {
+            callbacks.error = Some(ErrorCallback {
+                callback: cb,
+                user_data,
+            });
             GifskiError::OK
         },
-        Err(_) => GifskiError::THREAD_LOST,
+        Err(e) => e,
     }
 }
 
-#[derive(Clone)]
-struct SendableUserData(*mut c_void);
-unsafe impl Send for SendableUserData {}
-unsafe impl Sync for SendableUserData {}
+fn set_callbacks(g: Option<&GifskiHandleInternal>) -> Result<MutexGuard<'_, CCallbacks>, GifskiError> {
+    let g = g.ok_or(GifskiError::NULL_ARG)?;
+
+    if g.write_thread.lock().map_or(true, |t| t.0) {
+        g.print_error("tried to set a callback after writing has already started".into());
+        return Err(GifskiError::INVALID_STATE);
+    }
+
+    g.callbacks.lock().map_err(|_| GifskiError::THREAD_LOST)
+}
 
 /// Start writing to the `destination`. This has to be called before any frames are added.
 ///
@@ -523,11 +521,10 @@ fn gifski_write_thread_start<W: 'static +  Write + Send>(g: &GifskiHandleInterna
         return Err(GifskiError::INVALID_STATE);
     }
     let writer = g.writer.lock().map_err(|_| GifskiError::THREAD_LOST)?.take();
-    let mut user_progress = g.progress.lock().map_err(|_| GifskiError::THREAD_LOST)?.take();
+    let mut user_progress = g.callbacks.lock().map_err(|_| GifskiError::THREAD_LOST)?.clone();
     let handle = thread::Builder::new().name("c-write".into()).spawn(move || {
         if let Some(writer) = writer {
-            let progress = user_progress.as_mut().map(|m| m as &mut dyn ProgressReporter);
-            match writer.write(file, progress.unwrap_or(&mut NoProgress {})).into() {
+            match writer.write(file, &mut user_progress).into() {
                 res @ (GifskiError::OK | GifskiError::ALREADY_EXISTS) => res,
                 err => {
                     if let Some(path) = path {
@@ -596,9 +593,10 @@ pub unsafe extern "C" fn gifski_finish(g: *const GifskiHandle) -> GifskiError {
 }
 
 impl GifskiHandleInternal {
+    #[cold]
     fn print_error(&self, mut err: String) {
-        if let Ok(Some(cb)) = self.error_callback.lock().as_deref() {
-            cb(err);
+        if let Ok(reporter) = self.callbacks.lock().as_deref_mut() {
+            reporter.error(err)
         } else {
             err.reserve_exact(1);
             err.push('\n');
@@ -606,6 +604,7 @@ impl GifskiHandleInternal {
         }
     }
 
+    #[cold]
     fn print_panic(&self, e: Box<dyn std::any::Any + Send>) {
         let msg = e.downcast_ref::<String>().map(|s| s.as_str())
             .or_else(|| e.downcast_ref::<&str>().copied()).unwrap_or("unknown panic");
@@ -643,7 +642,7 @@ fn c_cb() {
         assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), ptr::addr_of_mut!(write_called).cast()));
         assert_eq!(GifskiError::INVALID_STATE, gifski_set_progress_callback(g, pcb, ptr::addr_of_mut!(progress_called).cast()));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 3.));
-        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0,0,0), 10.));
+        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 1, 1, 3, 1, &RGB::new(0,0,0), 10.));
         assert_eq!(GifskiError::OK, gifski_finish(g));
     }
     assert!(write_called);
@@ -673,7 +672,7 @@ fn progress_abort() {
         assert_eq!(GifskiError::OK, gifski_set_progress_callback(g, pcb, ptr::null_mut()));
         assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), ptr::null_mut()));
         assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0, 0, 0), 3.));
-        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 0, 1, 3, 1, &RGB::new(0, 0, 0), 10.));
+        assert_eq!(GifskiError::OK, gifski_add_frame_rgb(g, 1, 1, 3, 1, &RGB::new(0, 0, 0), 10.));
         assert_eq!(GifskiError::ABORTED, gifski_finish(g));
     }
 }
@@ -740,7 +739,7 @@ fn test_error_callback() {
         assert_eq!(GifskiError::OK, gifski_set_write_callback(g, Some(cb), 1 as _));
         assert_eq!(GifskiError::INVALID_STATE, gifski_set_write_callback(g, Some(cb), 1 as _));
         assert_eq!(GifskiError::INVALID_STATE, gifski_finish(g));
-        assert_eq!("gifski_set_file_output/gifski_set_write_callback has been called already", callback_msg.unwrap());
+        assert_eq!("gifski_set_file_output/gifski_set_write_callback has been called already", callback_msg.expect("set msg"));
     }
 }
 
