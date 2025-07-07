@@ -65,6 +65,7 @@ use std::io::prelude::*;
 use std::num::NonZeroU8;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Mutex;
 use std::thread;
 
 /// Number of repetitions
@@ -515,7 +516,7 @@ impl Writer {
     }
 
     #[inline(never)]
-    fn write_frames(&self, write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+    fn write_frames(&self, write_queue: Receiver<FrameMessage>, writer: &mut dyn Write, reporter: &Mutex<Option<&mut dyn ProgressReporter>>) -> CatResult<()> {
         let (lzw_queue, lzw_recv) = ordqueue_new(2);
         minipool::new_scope((if self.settings.s.fast || self.settings.gifsicle_loss() > 0 { 3 } else { 1 }).try_into().unwrap(), "lzw", move || {
             let mut pts_in_delay_units = 0_u64;
@@ -534,12 +535,15 @@ impl Writer {
 
                 enc.write_frame(frame, delay, screen_width, screen_height, &self.settings.s)?;
 
+                let mut reporter_lock = reporter.lock().map_err(|_| Error::ThreadSend)?;
+                let reporter = reporter_lock.as_deref_mut().ok_or(Error::Aborted)?;
                 reporter.written_bytes(written.get());
 
                 // loop to report skipped frames too
                 while n_done < ordinal_frame_number {
                     n_done += 1;
                     if !reporter.increase() {
+                        *reporter_lock = None; // prevent further abort-caused errors from being logged
                         return Err(Error::Aborted);
                     }
                 }
@@ -549,9 +553,9 @@ impl Writer {
             } else {
                 Ok(())
             }
-        }, move |abort| {
+        }, move |failed| {
             for FrameMessage {frame, frame_index, ordinal_frame_number, end_pts, screen_width, screen_height } in write_queue {
-                if abort.load(Relaxed) {
+                if failed.load(Relaxed) {
                     return Err(Error::Aborted);
                 }
 
@@ -575,6 +579,8 @@ impl Writer {
 
     #[inline(never)]
     fn write_inner(&self, decode_queue_recv: Receiver<InputFrame>, writer: &mut dyn Write, reporter: &mut dyn ProgressReporter) -> CatResult<()> {
+        let reporter = &Mutex::new(Some(reporter));
+
         thread::scope(|s| {
             let (diff_queue, diff_queue_recv) = ordqueue_new(0);
             let resize_thread = thread::Builder::new().name("resize".into()).spawn_scoped(s, move || {
@@ -582,7 +588,7 @@ impl Writer {
             })?;
             let (quant_queue, quant_queue_recv) = crossbeam_channel::bounded(0);
             let diff_thread = thread::Builder::new().name("diff".into()).spawn_scoped(s, move || {
-                self.make_diffs(diff_queue_recv, quant_queue)
+                self.make_diffs(diff_queue_recv, quant_queue, reporter)
             })?;
             let (remap_queue, remap_queue_recv) = ordqueue_new(0);
             let quant_thread = thread::Builder::new().name("quant".into()).spawn_scoped(s, move || {
@@ -628,6 +634,7 @@ impl Writer {
                 let resized = resized_binary_alpha(image, self.settings.s.width, self.settings.s.height, self.settings.matte)?;
                 let frame_blurred = if self.settings.extra_effort { smart_blur(resized.as_ref()) } else { less_smart_blur(resized.as_ref()) };
                 diff_queue.send(frame.frame_index, InputFrameResized {
+                    original_index: frame.frame_index,
                     frame: resized,
                     frame_blurred,
                     presentation_timestamp: frame.presentation_timestamp,
@@ -638,7 +645,7 @@ impl Writer {
     }
 
     /// Find differences between frames, and compute importance maps
-    fn make_diffs(&self, mut inputs: OrdQueueIter<InputFrameResized>, diffs: Sender<DiffMessage>) -> CatResult<()> {
+    fn make_diffs(&self, mut inputs: OrdQueueIter<InputFrameResized>, diffs: Sender<DiffMessage>, reporter: &Mutex<Option<&mut dyn ProgressReporter>>) -> CatResult<()> {
         let first_frame = inputs.next().ok_or(Error::NoFrames)?;
 
         let mut last_frame_duration = if first_frame.presentation_timestamp > 1. / 100. {
@@ -652,6 +659,7 @@ impl Writer {
         let mut denoiser = Denoiser::new(first_frame.frame.width(), first_frame.frame.height(), self.settings.motion_quality)?;
 
         let mut ordinal_frame_number = 0;
+        let mut next_original_index_expected = 0;
         let mut last_frame_pts = 0.;
         let mut next_frame = Some(first_frame);
         loop {
@@ -664,11 +672,23 @@ impl Writer {
 
             ////////////////////// Feed denoiser: /////////////////////
 
-            if let Some(InputFrameResized { frame, frame_blurred, presentation_timestamp: raw_pts }) = next_frame {
+            if let Some(InputFrameResized { frame, frame_blurred, original_index, presentation_timestamp: raw_pts }) = next_frame {
+                if original_index != next_original_index_expected {
+                    if let Some(r) = &mut *reporter.lock().map_err(|_| Error::ThreadSend)? {
+                        r.error(format!("expected frame_number {next_original_index_expected}, got {original_index}"));
+                    }
+                }
+                next_original_index_expected = original_index + 1;
                 ordinal_frame_number += 1;
 
-                let pts = raw_pts - last_frame_duration.shift_every_pts_by();
-                if let LastFrameDuration::FrameRate(duration) = &mut last_frame_duration {
+                let mut pts = raw_pts - last_frame_duration.shift_every_pts_by();
+                if pts < last_frame_pts {
+                    if let Some(r) = &mut *reporter.lock().map_err(|_| Error::ThreadSend)? {
+                        r.error(format!("expected frame_number {original_index} to have pts > {last_frame_pts:0.3}, got {raw_pts:0.3}"));
+                    }
+                    pts = last_frame_pts;
+                }
+                else if let LastFrameDuration::FrameRate(duration) = &mut last_frame_duration {
                     *duration = pts - last_frame_pts;
                 }
                 last_frame_pts = pts;

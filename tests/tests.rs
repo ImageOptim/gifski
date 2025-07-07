@@ -83,6 +83,36 @@ fn all_dupe_frames() {
 }
 
 #[test]
+fn errors() {
+    let (c, w) = new(Settings::default()).unwrap();
+
+    struct Errors(Vec<String>);
+    impl progress::ProgressReporter for Errors {
+        fn increase(&mut self) -> bool { true }
+        fn error(&mut self, msg: String) {
+            self.0.push(msg);
+        }
+    }
+
+    let t = std::thread::spawn(move || {
+        c.add_frame_png_file(1, frame_filename(1), 0.0).unwrap();
+        c.add_frame_png_file(1, frame_filename(1), 2.0).unwrap();
+        c.add_frame_png_file(2, frame_filename(1), 1.1).unwrap();
+    });
+
+
+    let mut out = Vec::new();
+    let mut errs = Errors(vec![]);
+    w.write(&mut out, &mut errs).unwrap();
+    t.join().unwrap();
+
+    errs.0.sort(); // order may change?
+    assert_eq!("expected frame_number 0, got 1", errs.0[0]);
+    assert_eq!("expected frame_number 2 to have pts > 2.000, got 1.100", errs.0[1]);
+    assert_eq!("expected frame_number 2, got 1", errs.0[2]);
+}
+
+#[test]
 fn all_but_one_dupe_frames() {
     let (c, w) = new(Settings::default()).unwrap();
 

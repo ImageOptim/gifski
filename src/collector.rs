@@ -35,6 +35,9 @@ pub(crate) struct InputFrameResized {
     pub frame_blurred: ImgVec<RGB8>,
     /// Time in seconds when to display the frame. First frame should start at 0.
     pub presentation_timestamp: f64,
+
+    /// Debugging bad inputs
+    pub original_index: usize,
 }
 
 /// Collect frames that will be encoded
