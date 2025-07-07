@@ -21,8 +21,9 @@ gifski *g = gifski_new(&(GifskiSettings){
 gifski_set_file_output(g, "file.gif");
 
 for(int i=0; i < frames; i++) {
-     int res = gifski_add_frame_rgba(g, i, width, height, buffer, 5);
-     if (res != GIFSKI_OK) break;
+    // added frames will be sorted by the `i` index
+    int res = gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+    if (res != GIFSKI_OK) break;
 }
 int res = gifski_finish(g);
 if (res != GIFSKI_OK) return;
@@ -149,11 +150,18 @@ GifskiError gifski_set_lossy_quality(gifski *handle, uint8_t quality);
 GifskiError gifski_set_extra_effort(gifski *handle, bool extra);
 
 /**
- * Adds a frame to the animation. This function is asynchronous.
+ * Adds a fixed color that will be kept in the palette at all times.
+ *
+ * Only valid immediately after calling `gifski_new`, before any frames are added.
+ */
+GifskiError gifski_add_fixed_color(gifski *handle, uint8_t col_r, uint8_t col_g, uint8_t col_b);
+
+/**
+ * Insert a new frame at the position of `frame_number`.
  *
  * File path must be valid UTF-8.
  *
- * `frame_number` orders frames (consecutive numbers starting from 0).
+ * Frame numbers start and 0, and must be consecutive (without gaps).
  * You can add frames in any order, and they will be sorted by their `frame_number`.
  *
  * Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
@@ -162,7 +170,7 @@ GifskiError gifski_set_extra_effort(gifski *handle, bool extra);
  *
  * The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
  *
- * This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
+ * This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
@@ -172,25 +180,28 @@ GifskiError gifski_add_frame_png_file(gifski *handle,
                                       double presentation_timestamp);
 
 /**
- * Adds a frame to the animation. This function is asynchronous.
+ * Insert a new frame at the position of `frame_number`.
  *
  * `pixels` is an array width×height×4 bytes large.
  * The array is copied, so you can free/reuse it immediately after this function returns.
  *
- * `frame_number` orders frames (consecutive numbers starting from 0).
- * You can add frames in any order, and they will be sorted by their `frame_number`.
- * However, out-of-order frames are buffered in RAM, and will cause high memory usage
- * if there are gaps in the frame numbers.
+ * Frame numbers start and 0, and must be consecutive (without gaps). However, you can add frames in any order.
+ * Order of calls to `gifski_add_frame_rgba` doesn't affect the animation.
+ * When frames are added out of order, the encoder will buffer them in RAM until they can be processed.
+ * Frames are always encoded in the order sorted by their `frame_number`.
+ *
+ * Make sure to start frame numbers at 0 and don't leave any gaps, because otherwise the encoder may wait
+ * forever for a frame number that never arrives. It's an error to add the same `frame_number` more than once.
  *
  * Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
- * For a 20fps video it could be `frame_number/20.0`. First frame must have PTS=0.
+ * For a 20fps video it could be `frame_number/20.0`.
  * Frames with duplicate or out-of-order PTS will be skipped.
  *
  * The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
  *
  * Colors are in sRGB, uncorrelated RGBA, with alpha byte last.
  *
- * This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
+ * This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
  *
  * Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
  */
@@ -218,7 +229,11 @@ If the bytes per row value is invalid (e.g. an odd number), frames may look shea
 Colors are in sRGB, uncorrelated ARGB, with alpha byte first.
 
 `gifski_add_frame_rgba` is preferred over this function.
-*/
+
+The `pixels` array is copied, so you can free/reuse it immediately after this function returns.
+
+This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` first to avoid a deadlock.
+ */
 GifskiError gifski_add_frame_argb(gifski *handle,
                                   uint32_t frame_number,
                                   uint32_t width,
@@ -235,6 +250,10 @@ If the bytes per row value is invalid (not multiple of 3), frames may look shear
 Colors are in sRGB, red byte first.
 
 `gifski_add_frame_rgba` is preferred over this function.
+
+The `pixels` array is copied, so you can free/reuse it immediately after this function returns.
+
+This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` first to avoid a deadlock.
 */
 GifskiError gifski_add_frame_rgb(gifski *handle,
                                  uint32_t frame_number,
@@ -259,7 +278,7 @@ GifskiError gifski_add_frame_rgb(gifski *handle,
  *
  * This function must be called before `gifski_set_file_output()` to take effect.
  */
-void gifski_set_progress_callback(gifski *handle, int (*progress_callback)(void *user_data), void *user_data);
+GifskiError gifski_set_progress_callback(gifski *handle, int (*progress_callback)(void *user_data), void *user_data);
 
 /**
  * Get a callback when an error occurs.

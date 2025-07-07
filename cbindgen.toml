@@ -1,0 +1,9 @@
+language = "C"
+cpp_compat = true
+documentation_style = "doxy"
+style = "type"
+
+[export.rename]
+"GifskiHandle" = "gifski"
+"RGBA8" = "unsigned char"
+"ARGB8" = "unsigned char"

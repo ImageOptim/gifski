@@ -8,8 +8,9 @@
 //! gifski_set_file_output(g, "file.gif");
 //!
 //! for(int i=0; i < frames; i++) {
-//!      int res = gifski_add_frame_rgba(g, i, width, height, buffer, 5);
-//!      if (res != GIFSKI_OK) break;
+//!     // added frames will be sorted by the `i` index
+//!     int res = gifski_add_frame_rgba(g, i, width, height, buffer, 5);
+//!     if (res != GIFSKI_OK) break;
 //! }
 //! int res = gifski_finish(g);
 //! if (res != GIFSKI_OK) return;
@@ -200,11 +201,11 @@ pub unsafe extern "C" fn gifski_add_fixed_color(handle: *mut GifskiHandle, col_r
     }
 }
 
-/// Adds a frame to the animation. This function is asynchronous.
+/// Insert a new frame at the position of `frame_number`.
 ///
 /// File path must be valid UTF-8.
 ///
-/// `frame_number` orders frames (consecutive numbers starting from 0).
+/// Frame numbers start and 0, and must be consecutive (without gaps).
 /// You can add frames in any order, and they will be sorted by their `frame_number`.
 ///
 /// Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
@@ -213,7 +214,7 @@ pub unsafe extern "C" fn gifski_add_fixed_color(handle: *mut GifskiHandle, col_r
 ///
 /// The first frame should have PTS=0. If the first frame has PTS > 0, it'll be used as a delay after the last frame.
 ///
-/// This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
+/// This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
@@ -237,9 +238,20 @@ pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, 
     }
 }
 
-/// Pixels is an array width×height×4 bytes large. The array is copied, so you can free/reuse it immediately.
+/// Insert a new frame at the position of `frame_number`.
 ///
-/// Presentation timestamp (PTS) is time in seconds, since start of the file (at 0), when this frame is to be displayed.
+/// `pixels` is an array width×height×4 bytes large.
+/// The array is copied, so you can free/reuse it immediately after this function returns.
+///
+/// Frame numbers start and 0, and must be consecutive (without gaps). However, you can add frames in any order.
+/// Order of calls to `gifski_add_frame_rgba` doesn't affect the animation.
+/// When frames are added out of order, the encoder will buffer them in RAM until they can be processed.
+/// Frames are always encoded in the order sorted by their `frame_number`.
+///
+/// Make sure to start frame numbers at 0 and don't leave any gaps, because otherwise the encoder may wait
+/// forever for a frame number that never arrives. It's an error to add the same `frame_number` more than once.
+///
+/// Presentation timestamp (PTS) is time in seconds, since start of the file, when this frame is to be displayed.
 /// For a 20fps video it could be `frame_number/20.0`.
 /// Frames with duplicate or out-of-order PTS will be skipped.
 ///
@@ -247,7 +259,7 @@ pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, 
 ///
 /// Colors are in sRGB, uncorrelated RGBA, with alpha byte last.
 ///
-/// This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
+/// This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` or `gifski_set_file_output` first to avoid a deadlock.
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
@@ -307,6 +319,10 @@ fn add_frame_rgba(handle: *const GifskiHandle, frame_number: u32, frame: ImgVec<
 /// Colors are in sRGB, uncorrelated ARGB, with alpha byte first.
 ///
 /// `gifski_add_frame_rgba` is preferred over this function.
+///
+/// The `pixels` array is copied, so you can free/reuse it immediately after this function returns.
+///
+/// This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` first to avoid a deadlock.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const ARGB8, presentation_timestamp: f64) -> GifskiError {
     let (pixels, stride) = match pixels_slice(pixels, width, height, bytes_per_row) {
@@ -329,10 +345,12 @@ pub unsafe extern "C" fn gifski_add_frame_argb(handle: *const GifskiHandle, fram
 /// Bytes per row must be multiple of 3 and greater or equal width×3.
 ///
 /// Colors are in sRGB, red byte first.
-
-/// This function may block and wait until the frame is processed. Make sure to call `gifski_set_write_callback` first to avoid a deadlock.
 ///
 /// `gifski_add_frame_rgba` is preferred over this function.
+///
+/// The `pixels` array is copied, so you can free/reuse it immediately after this function returns.
+///
+/// This function may block and wait until encoding can start. Make sure to call `gifski_set_write_callback` first to avoid a deadlock.
 #[no_mangle]
 pub unsafe extern "C" fn gifski_add_frame_rgb(handle: *const GifskiHandle, frame_number: u32, width: u32, bytes_per_row: u32, height: u32, pixels: *const RGB8, presentation_timestamp: f64) -> GifskiError {
     let (pixels, stride) = match pixels_slice(pixels, width, height, bytes_per_row) {
