@@ -86,7 +86,9 @@ fn all_dupe_frames() {
 fn errors() {
     let (c, w) = new(Settings::default()).unwrap();
 
+    #[derive(Debug)]
     struct Errors(Vec<String>);
+
     impl progress::ProgressReporter for Errors {
         fn increase(&mut self) -> bool { true }
         fn error(&mut self, msg: String) {
@@ -107,9 +109,9 @@ fn errors() {
     t.join().unwrap();
 
     errs.0.sort(); // order may change?
-    assert_eq!("expected frame_number 0, got 1", errs.0[0]);
-    assert_eq!("expected frame_number 2 to have pts > 2.000, got 1.100", errs.0[1]);
-    assert_eq!("expected frame_number 2, got 1", errs.0[2]);
+    assert_eq!("expected frame_number 0, got 1", errs.0[0], "{errs:#?}");
+    assert_eq!("expected frame_number 2 to have pts > 2.000, got 1.100", errs.0[1], "{errs:#?}");
+    assert_eq!("expected frame_number 2, got 1", errs.0[2], "{errs:#?}");
 }
 
 #[test]
