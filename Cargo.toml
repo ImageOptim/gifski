@@ -45,7 +45,7 @@ yuv = { version = "0.1.9", optional = true }
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
-version = "6"
+version = "8"
 optional = true
 default-features = false
 features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
@@ -98,7 +98,3 @@ generation = false
 
 [package.metadata.capi.install.include]
 asset = [{from = "gifski.h"}]
-
-[patch.crates-io]
-# ffmpeg-sys-next does not support cross-compilation, which I use to produce binaries https://github.com/zmwangx/rust-ffmpeg-sys/pull/30
-ffmpeg-sys-next = { rev = "fd5784d645df2ebe022a204ac36582074da1edf7", git = "https://github.com/kornelski/rust-ffmpeg-sys-1"}
