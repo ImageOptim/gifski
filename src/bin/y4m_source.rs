@@ -7,7 +7,7 @@ use yuv::color::{MatrixCoefficients, Range};
 use yuv::convert::RGBConvert;
 use yuv::YUV;
 use crate::{SrcPath, BinResult};
-use crate::source::{Fps, Source};
+use crate::source::{Fps, Source, DEFAULT_FPS};
 
 pub struct Y4MDecoder {
     fps: Fps,
@@ -90,7 +90,8 @@ impl Source for Y4MDecoder {
     fn collect(&mut self, c: &mut Collector) -> BinResult<()> {
         let fps = self.decoder.get_framerate();
         let frame_time = 1. / (fps.num as f64 / fps.den as f64);
-        let wanted_frame_time = 1. / f64::from(self.fps.fps);
+        let wanted_fps = f64::from(self.fps.fps.unwrap_or(DEFAULT_FPS));
+        let wanted_frame_time = 1. / wanted_fps;
         let width = self.decoder.get_width();
         let height = self.decoder.get_height();
         let raw_params_str = &*String::from_utf8_lossy(self.decoder.get_raw_params()).into_owned();

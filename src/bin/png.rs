@@ -1,4 +1,4 @@
-use crate::source::{Fps, Source};
+use crate::source::{Fps, Source, DEFAULT_FPS};
 use crate::BinResult;
 use gifski::Collector;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ impl Lodecoder {
     pub fn new(frames: Vec<PathBuf>, params: Fps) -> Self {
         Self {
             frames,
-            fps: f64::from(params.fps) * f64::from(params.speed),
+            fps: f64::from(params.fps.unwrap_or(DEFAULT_FPS)) * f64::from(params.speed),
         }
     }
 }
