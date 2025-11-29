@@ -80,10 +80,10 @@ fn bin_main() -> BinResult<()> {
                                    input, this means the speed, as all frames are \
                                    kept.\nIf video is used, it will be resampled to \
                                    this constant rate by dropping and/or duplicating \
-                                   frames")
+                                   frames.\nDefault is 20 for videos. No effect for \
+                                   GIF or PNG input.")
                             .value_parser(value_parser!(f32))
-                            .value_name("num")
-                            .default_value("20"))
+                            .value_name("num"))
                         .arg(Arg::new("fast-forward")
                             .long("fast-forward")
                             .help("Multiply speed of video by a factor")
@@ -226,7 +226,7 @@ fn bin_main() -> BinResult<()> {
         repeat,
     };
     let quiet = matches.get_flag("quiet") || output_path == DestPath::Stdout;
-    let fps: f32 = matches.get_one::<f32>("fps").copied().ok_or("?")?;
+    let fps: Option<f32> = matches.get_one::<f32>("fps").copied();
     let speed: f32 = matches.get_one::<f32>("fast-forward").copied().ok_or("?")?;
     let fixed_colors = matches.get_many::<Vec<rgb::RGB8>>("fixed-color");
     let matte = matches.get_one::<rgb::RGB8>("matte");
@@ -248,10 +248,12 @@ fn bin_main() -> BinResult<()> {
         return Err("Fast-forward must be 0..1000".into());
     }
 
-    if fps > 100.0 || fps <= 0.0 {
-        return Err("100 fps is maximum".into());
-    } else if !quiet && fps > 50.0 {
-        eprintln!("warning: web browsers support max 50 fps");
+    if let Some(fps) = fps {
+        if fps > 100.0 || fps <= 0.0 {
+            return Err("100 fps is maximum".into());
+        } else if !quiet && fps > 50.0 {
+            eprintln!("warning: web browsers support max 50 fps");
+        }
     }
 
     check_if_paths_exist(&frames)?;
