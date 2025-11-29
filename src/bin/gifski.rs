@@ -81,7 +81,8 @@ fn bin_main() -> BinResult<()> {
                                    kept.\nIf video is used, it will be resampled to \
                                    this constant rate by dropping and/or duplicating \
                                    frames.\nDefault is 20 for videos. No effect for \
-                                   GIF or PNG input.")
+                                   PNG input. For GIF input, it will be used to drop \
+                                   frames if present.")
                             .value_parser(value_parser!(f32))
                             .value_name("num"))
                         .arg(Arg::new("fast-forward")
