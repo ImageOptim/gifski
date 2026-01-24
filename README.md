@@ -102,6 +102,15 @@ cargo cinstall --prefix=/usr --release --destdir=pkgroot
 
 The `cbuild` command can be omitted, since `cinstall` will trigger a build if it hasn't been done already.
 
+### For WASM
+To build the library for WebAssembly, you need to have [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) installed. Then run:
+
+```sh
+wasm-pack build --target web --features wasm --no-default-features
+```
+
+
+
 ## License
 
 AGPL 3 or later. I can offer alternative licensing options, including [commercial licenses](https://supso.org/projects/pngquant). Let [me](https://kornel.ski/contact) know if you'd like to use it in a product incompatible with this license.

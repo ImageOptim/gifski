@@ -42,6 +42,9 @@ ordered-channel = { version = "1.2.0", features = ["crossbeam-channel"] }
 wild = { version = "2.2.1", optional = true, features = ["glob-quoted-on-windows"] }
 y4m = { version = "0.8.0", optional = true }
 yuv = { version = "0.1.9", optional = true }
+wasm-bindgen = { version = "0.2.108", optional = true }
+web-sys = {version="0.3.85", features = ["console"], optional = true }
+console_error_panic_hook = {version = "0.1.7", optional = true}
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
@@ -69,6 +72,7 @@ video-static = ["video", "ffmpeg/build"]
 video-prebuilt-static = ["video", "ffmpeg/static"]
 # Support lossy LZW encoding when lower quality is set
 gifsicle = []
+wasm = ["dep:wasm-bindgen", "dep:console_error_panic_hook", "dep:web-sys"]
 
 [lib]
 path = "src/lib.rs"
@@ -98,6 +102,12 @@ generation = false
 
 [package.metadata.capi.install.include]
 asset = [{from = "gifski.h"}]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
 
 [patch.crates-io]
 # ffmpeg-sys-next does not support cross-compilation, which I use to produce binaries https://github.com/zmwangx/rust-ffmpeg-sys/pull/30
