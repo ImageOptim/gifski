@@ -45,6 +45,7 @@ yuv = { version = "0.1.9", optional = true }
 wasm-bindgen = { version = "0.2.108", optional = true }
 web-sys = {version="0.3.85", features = ["console"], optional = true }
 console_error_panic_hook = {version = "0.1.7", optional = true}
+wasm-bindgen-rayon = "1.3.0"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
