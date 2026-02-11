@@ -49,7 +49,7 @@ wasm-bindgen-rayon = "1.3.0"
 
 [dependencies.ffmpeg]
 package = "ffmpeg-next"
-version = "6"
+version = "8"
 optional = true
 default-features = false
 features = ["codec", "format", "filter", "software-resampling", "software-scaling"]
@@ -109,7 +109,3 @@ wasm-opt = ["-O3", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", 
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
-
-[patch.crates-io]
-# ffmpeg-sys-next does not support cross-compilation, which I use to produce binaries https://github.com/zmwangx/rust-ffmpeg-sys/pull/30
-ffmpeg-sys-next = { rev = "fd5784d645df2ebe022a204ac36582074da1edf7", git = "https://github.com/kornelski/rust-ffmpeg-sys-1"}
