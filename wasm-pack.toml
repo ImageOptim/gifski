@@ -1,0 +1,5 @@
+[package]
+name = "gifski-wasm"
+
+[profile.release]
+wasm-opt = ["-O3", "--enable-simd"]

@@ -69,6 +69,12 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Mutex;
 use std::thread;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
+#[cfg(feature = "wasm")]
+pub use wasm::GifskiWasm;
+
 /// Number of repetitions
 pub type Repeat = gif::Repeat;
 
