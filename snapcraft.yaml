@@ -39,7 +39,13 @@ parts:
       - libswresample-dev
       - libswscale-dev
       - libclang-15-dev
+      - libblas3
     stage-packages:
       - ffmpeg
       - freeglut3 # dep leak from one of ffmpeg dev libs?
       - libglu1-mesa
+      - libblas3
+    organize:
+      # https://forum.snapcraft.io/t/snapcraft-succeeds-but-libblas-so-3-link-cant-be-found-at-runtime/24840/5
+      usr/lib/*-linux-gnu/blas/*: usr/lib/
+      usr/lib/*-linux-gnu/lapack/*: usr/lib/
