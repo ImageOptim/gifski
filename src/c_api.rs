@@ -221,7 +221,7 @@ pub unsafe extern "C" fn gifski_add_fixed_color(handle: *mut GifskiHandle, col_r
 ///
 /// Returns 0 (`GIFSKI_OK`) on success, and non-0 `GIFSKI_*` constant on error.
 #[no_mangle]
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", not(all(target_arch = "wasm32", target_os = "unknown"))))]
 pub unsafe extern "C" fn gifski_add_frame_png_file(handle: *const GifskiHandle, frame_number: u32, file_path: *const c_char, presentation_timestamp: f64) -> GifskiError {
     if file_path.is_null() {
         return GifskiError::NULL_ARG;

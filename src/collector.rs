@@ -9,14 +9,14 @@ pub use rgb::{RGB8, RGBA8};
 use crate::error::GifResult;
 use crossbeam_channel::Sender;
 
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", not(all(target_arch = "wasm32", target_os = "unknown"))))]
 use std::path::PathBuf;
 
 pub(crate) enum FrameSource {
     Pixels(ImgVec<RGBA8>),
     #[cfg(feature = "png")]
     PngData(Vec<u8>),
-    #[cfg(all(feature = "png", not(target_arch = "wasm32")))]
+    #[cfg(all(feature = "png", not(all(target_arch = "wasm32", target_os = "unknown"))))]
     Path(PathBuf),
 }
 
@@ -102,7 +102,7 @@ impl Collector {
     /// If the first frame doesn't start at pts=0, the delay will be used for the last frame.
     ///
     /// If this function appears to be stuck after a few frames, it's because [`crate::Writer::write()`] is not running.
-    #[cfg(feature = "png")]
+    #[cfg(all(feature = "png", not(all(target_arch = "wasm32", target_os = "unknown"))))]
     pub fn add_frame_png_file(&self, frame_index: usize, path: PathBuf, presentation_timestamp: f64) -> GifResult<()> {
         self.queue.send(InputFrame {
             frame: FrameSource::Path(path),

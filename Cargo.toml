@@ -45,6 +45,10 @@ yuv = { version = "0.1.9", optional = true }
 wasm-bindgen = { version = "0.2.108", optional = true }
 web-sys = {version="0.3.85", features = ["console"], optional = true }
 console_error_panic_hook = {version = "0.1.7", optional = true}
+
+# Only for browser wasm (wasm-pack). Requires RUSTFLAGS with +atomics,+bulk-memory.
+# Not used on wasm32-unknown-emscripten, where rayon uses pthreads instead.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 wasm-bindgen-rayon = "1.3.0"
 
 [dependencies.ffmpeg]

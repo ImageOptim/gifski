@@ -95,7 +95,8 @@ impl GifskiWasm {
     }
 }
 
-// thread pool for wasm-bindgen-rayon
+// thread pool for wasm-bindgen-rayon (browser wasm only; emscripten uses pthreads)
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[wasm_bindgen]
 pub fn init_thread_pool(num_threads: usize) -> Result<(), JsValue> {
     wasm_bindgen_rayon::init_thread_pool(num_threads);

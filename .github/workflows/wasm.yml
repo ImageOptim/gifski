@@ -14,6 +14,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Setup emscripten
+      uses: mymindstorm/setup-emsdk@v14
+
     - name: Prepare cargo tests
       run: |
         rustup target add wasm32-unknown-emscripten --toolchain=nightly

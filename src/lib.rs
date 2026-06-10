@@ -631,7 +631,7 @@ impl Writer {
                             .map_err(|err| Error::PNG(format!("Can't load PNG: {err}")))?;
                         Img::new(image.buffer, image.width, image.height)
                     },
-                    #[cfg(feature = "png")]
+                    #[cfg(all(feature = "png", not(all(target_arch = "wasm32", target_os = "unknown"))))]
                     FrameSource::Path(path) => {
                         let image = lodepng::decode32_file(&path)
                             .map_err(|err| Error::PNG(format!("Can't load {}: {err}", path.display())))?;
