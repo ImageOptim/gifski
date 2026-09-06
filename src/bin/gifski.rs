@@ -19,6 +19,7 @@ use yuv::color::MatrixCoefficients;
 mod ffmpeg_source;
 mod gif_source;
 mod png;
+mod raw_rgba_source;
 mod source;
 mod y4m_source;
 use crate::source::Source;
@@ -38,9 +39,9 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "video")]
-const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, or multiple PNG image files";
+const VIDEO_FRAMES_ARG_HELP: &str = "one video file supported by FFmpeg, multiple PNG image files, or raw RGBA";
 #[cfg(not(feature = "video"))]
-const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames, or a .y4m file";
+const VIDEO_FRAMES_ARG_HELP: &str = "PNG image files for the animation frames, a .y4m file, or raw RGBA";
 
 fn main() {
     if let Err(e) = bin_main() {
@@ -70,13 +71,13 @@ fn bin_main() -> BinResult<()> {
                         .arg(Arg::new("fps")
                             .long("fps")
                             .short('r')
-                            .help("Frame rate of animation. If using PNG files as \
-                                   input, this means the speed, as all frames are \
-                                   kept.\nIf video is used, it will be resampled to \
-                                   this constant rate by dropping and/or duplicating \
-                                   frames.\nDefault is 20 for videos. No effect for \
-                                   PNG input. For GIF input, it will be used to drop \
-                                   frames if present.")
+                            .help("Frame rate of animation. If using PNG files or \
+                                   raw RGBA as input, this means the speed, as all \
+                                   frames are kept.\nIf video is used, it will be \
+                                   resampled to this constant rate by dropping and/or \
+                                   duplicating frames.\nDefault is 20 for videos and \
+                                   image sequences. For GIF input, it will be used to \
+                                   drop frames if present.")
                             .value_parser(value_parser!(f32))
                             .value_name("num"))
                         .arg(Arg::new("fast-forward")
@@ -161,6 +162,23 @@ fn bin_main() -> BinResult<()> {
                             .action(ArgAction::SetTrue)
                             .hide_short_help(true)
                             .help("Make animation play forwards then backwards"))
+                        .arg(Arg::new("raw-rgba")
+                            .long("raw-rgba")
+                            .num_args(0)
+                            .action(ArgAction::SetTrue)
+                            .hide_short_help(true)
+                            .help("Read the input as tightly-packed 8-bit RGBA frames")
+                            .requires("raw-size")
+                            .conflicts_with("bounce")
+                            .conflicts_with("y4m-color-override"))
+                        .arg(Arg::new("raw-size")
+                            .long("raw-size")
+                            .help("Dimensions of the raw RGBA input")
+                            .num_args(1)
+                            .hide_short_help(true)
+                            .requires("raw-rgba")
+                            .value_parser(raw_rgba_source::parse_size)
+                            .value_name("WIDTHxHEIGHT"))
                         .arg(Arg::new("fixed-color")
                             .long("fixed-color")
                             .help("Always include this color in the palette")
@@ -192,8 +210,10 @@ fn bin_main() -> BinResult<()> {
                             e.exit()
                         });
 
+    let raw_size = matches.get_one::<raw_rgba_source::RawSize>("raw-size").copied();
     let mut frames: Vec<&str> = matches.get_many::<String>("FILES").ok_or("?")?.map(|s| s.as_str()).collect();
     let bounce = matches.get_flag("bounce");
+    let is_raw = matches.get_flag("raw-rgba");
     if !matches.get_flag("nosort") && frames.len() > 1 {
         frames.sort_by(|a, b| natord::compare(a, b));
     }
@@ -294,7 +314,7 @@ fn bin_main() -> BinResult<()> {
             } else {
                 SrcPath::Path(path.clone())
             };
-            match file_type(&mut src).unwrap_or(FileType::Other) {
+            match file_type(&mut src, is_raw).unwrap_or(FileType::Other) {
                 FileType::PNG | FileType::JPEG => return Err("Only a single image file was given as an input. This is not enough to make an animation.".into()),
                 FileType::GIF => {
                     if !quiet && (width.is_none() && settings.quality > 50) {
@@ -305,7 +325,7 @@ fn bin_main() -> BinResult<()> {
                 _ if path.is_dir() => {
                     return Err(format!("{} is a directory, not a PNG file", path.display()).into());
                 },
-                other_type => get_video_decoder(other_type, src, rate, in_color_space, settings)?,
+                other_type => get_video_decoder(other_type, src, rate, in_color_space, settings, raw_size)?,
             }
         } else {
             if bounce {
@@ -315,7 +335,7 @@ fn bin_main() -> BinResult<()> {
             if speed != 1.0 {
                 eprintln!("warning: --fast-forward option is for videos. It doesn't make sense for images. Use --fps only.");
             }
-            let file_type = file_type(&mut SrcPath::Path(frames[0].clone())).unwrap_or(FileType::Other);
+            let file_type = file_type(&mut SrcPath::Path(frames[0].clone()), is_raw).unwrap_or(FileType::Other);
             match file_type {
                 FileType::JPEG => {
                     return Err("JPEG format is unsuitable for conversion to GIF.\n\n\
@@ -325,6 +345,7 @@ fn bin_main() -> BinResult<()> {
                 },
                 FileType::GIF => return unexpected("GIF"),
                 FileType::Y4M => return unexpected("Y4M"),
+                FileType::RAW => return unexpected("RAW"),
                 _ => Box::new(png::Lodecoder::new(frames, rate)),
             }
         };
@@ -466,15 +487,19 @@ fn parse_color_space(value: &str) -> Result<MatrixCoefficients, String> {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(PartialEq)]
 enum FileType {
-    PNG, GIF, JPEG, Y4M, Other,
+    PNG, GIF, JPEG, Y4M, RAW, Other,
 }
 
-fn file_type(src: &mut SrcPath) -> BinResult<FileType> {
+fn file_type(src: &mut SrcPath, raw_expected: bool) -> BinResult<FileType> {
+    if raw_expected {
+        return Ok(FileType::RAW);
+    }
     let mut buf = [0; 4];
     match src {
         SrcPath::Path(path) => match path.extension() {
             Some(e) if e.eq_ignore_ascii_case("y4m") => return Ok(FileType::Y4M),
             Some(e) if e.eq_ignore_ascii_case("png") => return Ok(FileType::PNG),
+            Some(e) if e.eq_ignore_ascii_case("raw") => return Ok(FileType::RAW),
             _ => {
                 let mut file = std::fs::File::open(path)?;
                 file.read_exact(&mut buf)?;
@@ -501,6 +526,15 @@ fn file_type(src: &mut SrcPath) -> BinResult<FileType> {
         return Ok(FileType::JPEG);
     }
     Ok(FileType::Other)
+}
+
+#[test]
+fn raw_file_type_selection() {
+    let mut explicit = SrcPath::Path(PathBuf::from("anything.png"));
+    assert!(matches!(file_type(&mut explicit, true), Ok(FileType::RAW)));
+
+    let mut extension = SrcPath::Path(PathBuf::from("anything.raw"));
+    assert!(matches!(file_type(&mut extension, false), Ok(FileType::RAW)));
 }
 
 fn check_if_paths_exist(paths: &[PathBuf]) -> BinResult<()> {
@@ -572,9 +606,11 @@ impl fmt::Display for DestPath<'_> {
 }
 
 #[cfg(feature = "video")]
-fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, settings: Settings) -> BinResult<Box<dyn Source>> {
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, settings: Settings, raw_size: Option<raw_rgba_source::RawSize>) -> BinResult<Box<dyn Source>> {
     Ok(if ftype == FileType::Y4M {
         Box::new(y4m_source::Y4MDecoder::new(src, fps, in_color_space)?)
+    } else if ftype == FileType::RAW {
+        Box::new(raw_rgba_source::RawRgbaDecoder::new(src, raw_size, fps)?)
     } else {
         Box::new(ffmpeg_source::FfmpegDecoder::new(src, fps, settings)?)
     })
@@ -582,9 +618,11 @@ fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_s
 
 #[cfg(not(feature = "video"))]
 #[cold]
-fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, _: Settings) -> BinResult<Box<dyn Source>> {
+fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_space: Option<MatrixCoefficients>, _: Settings, raw_size: Option<raw_rgba_source::RawSize>) -> BinResult<Box<dyn Source>> {
     if ftype == FileType::Y4M {
         Ok(Box::new(y4m_source::Y4MDecoder::new(src, fps, in_color_space)?))
+    } else if ftype == FileType::RAW {
+        Ok(Box::new(raw_rgba_source::RawRgbaDecoder::new(src, raw_size, fps)?))
     } else {
         let path = match &src {
             SrcPath::Path(path) => path,
@@ -593,9 +631,13 @@ fn get_video_decoder(ftype: FileType, src: SrcPath, fps: source::Fps, in_color_s
         let rel_path = path.file_name().map_or(path, Path::new);
         Err(format!(r#"Video support is permanently disabled in this distribution of gifski.
 
-The only 'video' format supported at this time is YUV4MPEG2, which can be piped from ffmpeg:
+YUV4MPEG2 input can be piped from ffmpeg:
 
     ffmpeg -i "{src}" -f yuv4mpegpipe - | gifski -o "{gif}" -
+
+Raw RGBA input can also be piped from ffmpeg:
+
+    ffmpeg -i "{src}" -pix_fmt rgba -f rawvideo - | gifski --raw-rgba --raw-size [WIDTH]x[HEIGHT] --fps [FPS] -o "{gif}" -
 
 To enable full video decoding you need to recompile gifski from source.
 https://github.com/imageoptim/gifski
