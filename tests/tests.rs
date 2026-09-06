@@ -280,3 +280,140 @@ fn dump(filename: &str, px: ImgRef<RGBA8>) {
     let (buf, w, h) = px.to_contiguous_buf();
     lodepng::encode32_file(format!("/tmp/gifski-test-{filename}.png"), &buf, w, h).unwrap();
 }
+
+#[cfg(feature = "binary")]
+mod raw_rgba_cli {
+    use super::{assert_images_eq, for_each_frame};
+    use imgref::ImgVec;
+    use rgb::RGBA8;
+    use std::io::Write;
+    use std::process::{Command, Output, Stdio};
+
+    fn run_gifski(args: &[&str], input: &[u8]) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_gifski"))
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        {
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(input).unwrap();
+        }
+
+        child.wait_with_output().unwrap()
+    }
+
+    #[track_caller]
+    fn assert_raw_output(
+        output: Output,
+        expected_frames: &[ImgVec<RGBA8>],
+        expected_delays: &[u16],
+    ) {
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+
+        let mut frame_index = 0;
+        let mut delays = Vec::new();
+
+        for_each_frame(&output.stdout, |_, frame, actual| {
+            let expected = expected_frames.get(frame_index).unwrap_or_else(|| {
+                panic!("unexpected extra raw RGBA frame {frame_index}");
+            });
+
+            assert_eq!(
+                (actual.width(), actual.height()),
+                (expected.width(), expected.height()),
+                "incorrect dimensions for raw RGBA frame {frame_index}",
+            );
+
+            assert_images_eq(
+                expected.as_ref(),
+                actual,
+                0.8,
+                format_args!("raw RGBA frame {frame_index}"),
+            );
+
+            delays.push(frame.delay);
+            frame_index += 1;
+        });
+
+        assert_eq!(
+            frame_index,
+            expected_frames.len(),
+            "incorrect number of raw RGBA frames",
+        );
+        assert_eq!(delays.as_slice(), expected_delays);
+    }
+
+    #[test]
+    fn raw_rgba() {
+        let input = [
+            // Frame 0
+            255, 0, 0, 255,
+            0, 255, 0, 255,
+            0, 0, 255, 255,
+            10, 20, 30, 0,
+            // Frame 1
+            255, 255, 0, 255,
+            40, 50, 60, 0,
+            255, 0, 255, 255,
+            0, 255, 255, 255,
+        ];
+
+        let expected = [
+            ImgVec::new(vec![
+                RGBA8::new(255, 0, 0, 255),
+                RGBA8::new(0, 255, 0, 255),
+                RGBA8::new(0, 0, 255, 255),
+                RGBA8::new(10, 20, 30, 0),
+            ], 2, 2),
+            ImgVec::new(vec![
+                RGBA8::new(255, 255, 0, 255),
+                RGBA8::new(40, 50, 60, 0),
+                RGBA8::new(255, 0, 255, 255),
+                RGBA8::new(0, 255, 255, 255),
+            ], 2, 2),
+        ];
+
+        let output = run_gifski(&[
+            "--raw-rgba",
+            "--raw-size", "2x2",
+            "--quality", "100",
+            "--output", "-",
+            "-",
+        ], &input);
+
+        // No --fps: raw RGBA should inherit the 20 FPS default.
+        assert_raw_output(output, &expected, &[5, 5]);
+    }
+
+    #[test]
+    fn raw_rgba_resize() {
+        let mut input = [255, 0, 0, 255].repeat(4);
+        input.extend([0, 0, 255, 255].repeat(4));
+
+        let expected = [
+            ImgVec::new(vec![RGBA8::new(255, 0, 0, 255)], 1, 1),
+            ImgVec::new(vec![RGBA8::new(0, 0, 255, 255)], 1, 1),
+        ];
+
+        let output = run_gifski(&[
+            "--raw-rgba",
+            "--raw-size", "2x2",
+            "--width", "1",
+            "--height", "1",
+            "--fps", "10",
+            "--quality", "100",
+            "--output", "-",
+            "-",
+        ], &input);
+
+        assert_raw_output(output, &expected, &[10, 10]);
+    }
+}

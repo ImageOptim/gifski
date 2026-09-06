@@ -39,6 +39,21 @@ Note that there's `-` at the end of the command. This tells `gifski` to read fro
 
 `gifski` may automatically downsize the video if it has resolution too high for a GIF. Use `--width=1280` if you can tolerate getting huge file sizes.
 
+### Preserving transparency
+
+`gifski`'s implementation of YUV4MPEG2 does not preserve transparency. To preserve transparency without creating files directly, pipe tightly-packed raw RGBA bytes in the `rawvideo` format from ffmpeg instead.
+
+```sh
+ffmpeg -i video.mp4 -pix_fmt rgba -f rawvideo - | gifski --raw-rgba --raw-size 640x360 --fps=20 -o anim.gif -
+```
+
+Including `--raw-rgba` tells gifski to treat the input as raw RGBA. Files with the `.raw` extension still must include this tag. Raw RGBA has no metadata, so `--raw-size` must match the input dimensions. For the same reason, the provided `--fps` value is assumed to be the input frame rate, and defaults to 20 when absent.
+
+Raw RGBA input is assumed sRGB color space with straight alpha. Perform color space transformation and frame interpolation before piping into gifski, though you may still rescale via `--width` and `--height`.
+
+> [!WARNING]
+> Raw RGBA can quickly consume large amounts of data, so prefer YUV4MPEG for opaque input where possible.
+
 ### From PNG frames
 
 A directory full of PNG frames can be used as an input too. You can export them from any animation software. If you have `ffmpeg` installed, you can also export frames with it:
